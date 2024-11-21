@@ -75,6 +75,7 @@ ssize_t yy_input(yyscan_t scanner, char *buf, size_t max_size);
 %token GETTRIG
 %token TIMEOUT
 %token DEBUG_ATTR
+%token DEBUG_REG
 %token BUFFER_ATTR
 %token IN_OUT
 %token CYCLIC
@@ -251,6 +252,16 @@ Line:
 		else
 			YYACCEPT;
 	}
+	| READ SPACE DEVICE SPACE DEBUG_REG SPACE WORD END {
+		char *addr = $7;
+		struct parser_pdata *pdata = yyget_extra(scanner);
+		ssize_t ret = read_dev_reg(pdata, $3, addr);
+		free(addr);
+		if (ret < 0)
+			YYABORT;
+		else
+			YYACCEPT;
+	}
 	| READ SPACE DEVICE SPACE BUFFER_ATTR END {
 		struct parser_pdata *pdata = yyget_extra(scanner);
 		if (read_dev_attr(pdata, $3, NULL, IIO_ATTR_TYPE_BUFFER) < 0)
@@ -352,6 +363,18 @@ Line:
 		ssize_t ret = write_dev_attr(pdata, $3, attr, nb, IIO_ATTR_TYPE_DEBUG);
 		free(attr);
 		free(len);
+		if (ret < 0)
+			YYABORT;
+		else
+			YYACCEPT;
+	}
+	| WRITE SPACE DEVICE SPACE DEBUG_REG SPACE WORD SPACE WORD END {
+		char *addr = $7;
+		char *val = $9;
+		struct parser_pdata *pdata = yyget_extra(scanner);
+		ssize_t ret = write_dev_reg(pdata, $3, addr, val);
+		free(addr);
+		free(val);
 		if (ret < 0)
 			YYABORT;
 		else

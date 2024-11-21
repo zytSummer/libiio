@@ -26,6 +26,8 @@
 #cmakedefine01 HAVE_DNS_SD
 #cmakedefine01 HAVE_AVAHI
 #cmakedefine01 WITH_ZSTD
+#cmakedefine01 WITH_DOC
+#cmakedefine01 WITH_DPD
 
 #cmakedefine HAS_PIPE2
 #cmakedefine HAS_STRDUP

@@ -112,6 +112,11 @@ WORD (([[:alpha:]]+,)|(iio:))?(-|_|\.|[[:alnum:]])+
 	return DEBUG_ATTR;
 }
 
+<WANT_CHN_OR_ATTR>REG|reg {
+	BEGIN(WANT_ATTR);
+	return DEBUG_REG;
+}
+
 <WANT_CHN_OR_ATTR>BUFFER|buffer {
 	BEGIN(WANT_ATTR);
 	return BUFFER_ATTR;

@@ -10,6 +10,7 @@
 #include "iio-private.h"
 #include "sort.h"
 #include "deps/libini/ini.h"
+#include "dpd.h"
 
 
 #include <dirent.h>
@@ -321,6 +322,12 @@ static ssize_t local_read(const struct iio_device *dev,
 
 	memcpy(mask, dev->mask, words);
 
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		return iio_dpd_read(dev, dst, len, mask, words);
+	}
+
 	if (len == 0)
 		return 0;
 
@@ -370,6 +377,12 @@ static ssize_t local_write(const struct iio_device *dev,
 
 	if (len == 0)
 		return 0;
+
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		return iio_dpd_write(dev, src, len);
+	}
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 
@@ -672,6 +685,12 @@ static ssize_t local_read_dev_attr(const struct iio_device *dev,
 	char buf[1024];
 	ssize_t ret;
 
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		return iio_dpd_read_dev_attr(dev, attr, dst, len, type);
+	}
+
 	if (!attr)
 		return local_read_all_dev_attrs(dev, dst, len, type);
 
@@ -726,6 +745,12 @@ static ssize_t local_write_dev_attr(const struct iio_device *dev,
 	char buf[1024];
 	ssize_t ret;
 
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		return iio_dpd_write_dev_attr(dev, attr, src, len, type);
+	}
+
 	if (!attr)
 		return local_write_all_dev_attrs(dev, src, len, type);
 
@@ -776,6 +801,12 @@ static const char * get_filename(const struct iio_channel *chn,
 static ssize_t local_read_chn_attr(const struct iio_channel *chn,
 		const char *attr, char *dst, size_t len)
 {
+	if (iio_device_is_dpd(chn->dev))
+	{
+		/* dpd operation */
+		return iio_dpd_read_chn_attr(chn, attr, dst, len);
+	}
+
 	if (!attr)
 		return local_read_all_chn_attrs(chn, dst, len);
 
@@ -786,6 +817,12 @@ static ssize_t local_read_chn_attr(const struct iio_channel *chn,
 static ssize_t local_write_chn_attr(const struct iio_channel *chn,
 		const char *attr, const char *src, size_t len)
 {
+	if (iio_device_is_dpd(chn->dev))
+	{
+		/* dpd operation */
+		return iio_dpd_write_chn_attr(chn, attr, src, len);
+	}
+
 	if (!attr)
 		return local_write_all_chn_attrs(chn, src, len);
 
@@ -914,6 +951,12 @@ static int local_open(const struct iio_device *dev,
 	if (pdata->fd != -1)
 		return -EBUSY;
 
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		iio_dpd_open(dev, samples_count, cyclic);
+	}
+	
 	ret = local_buffer_enabled_set(dev, false);
 	if (ret < 0)
 		return ret;
@@ -1014,6 +1057,12 @@ static int local_close(const struct iio_device *dev)
 
 	if (pdata->fd == -1)
 		return -EBADF;
+
+	if (iio_device_is_dpd(dev))
+	{
+		/* dpd operation */
+		iio_dpd_close(dev);
+	}
 
 	ret = 0;
 	ret1 = 0;
@@ -2105,6 +2154,19 @@ struct iio_context * local_create_context(void)
 		if (ret < 0)
 			goto err_context_destroy;
 	}
+#ifdef WITH_DPD
+	if (WITH_DPD) {
+		char path[100];
+		snprintf(path, 100, "%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH);
+		iio_dpd_device_pre_init();
+		ret = foreach_in_dir(ctx, path, true, create_device);
+		iio_dpd_device_post_init(iio_context_find_device(ctx, "dpd"));
+		if (ret == -ENOENT && !no_iio)
+			ret = 0; /* IIO devices but no dpd devices - not an error */
+		if (ret < 0)
+			goto err_context_destroy;
+	}
+#endif
 
 	qsort(ctx->devices, ctx->nb_devices, sizeof(struct iio_device *),
 		iio_device_compare);

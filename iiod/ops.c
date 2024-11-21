@@ -1233,6 +1233,63 @@ ssize_t read_dev_attr(struct parser_pdata *pdata, struct iio_device *dev,
 	return write_all(pdata, buf, ret + 1);
 }
 
+ssize_t read_dev_reg(struct parser_pdata *pdata, struct iio_device *dev,
+		const char *addr)
+{
+	char buf[0x30];
+	ssize_t ret = -EINVAL;
+	uint32_t reg_addr = 0;
+	uint32_t reg_val = 0;
+	char *end = NULL;
+	reg_addr = strtoul(addr, &end, 0);
+
+	if (!dev) {
+		print_value(pdata, -ENODEV);
+		return -ENODEV;
+	}
+
+	ret = iio_device_reg_read(dev, reg_addr, &reg_val);
+	if (ret < 0) {
+		print_value(pdata, ret);
+		return ret;
+	}
+
+	memset(buf, 0x00, sizeof(buf));
+	snprintf(buf, sizeof(buf), "read reg[0x%04x] = 0x%04x\n", reg_addr, reg_val);
+	write_all(pdata, buf, strlen(buf) + 1);
+	
+	return ret;
+}
+
+ssize_t write_dev_reg(struct parser_pdata *pdata, struct iio_device *dev,
+		const char *addr, const char *val)
+{
+	char buf[0x30];
+	ssize_t ret = -EINVAL;
+	uint32_t reg_addr = 0;
+	uint32_t reg_val = 0;
+	char *end = NULL;
+	reg_addr = strtoul(addr, &end, 0);
+	reg_val  = strtoul(val, &end, 0);
+
+	if (!dev) {
+		print_value(pdata, -ENODEV);
+		return -ENODEV;
+	}
+
+	ret = iio_device_reg_write(dev, reg_addr, reg_val);
+	if (ret < 0) {
+		print_value(pdata, ret);
+		return ret;
+	}
+
+	memset(buf, 0x00, sizeof(buf));
+	snprintf(buf, sizeof(buf), "write reg[0x%04x] = 0x%04x\n", reg_addr, reg_val);
+	write_all(pdata, buf, strlen(buf) + 1);
+	
+	return ret;
+}
+
 ssize_t write_dev_attr(struct parser_pdata *pdata, struct iio_device *dev,
 		const char *attr, size_t len, enum iio_attr_type type)
 {

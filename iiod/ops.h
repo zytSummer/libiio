@@ -108,6 +108,11 @@ int close_dev(struct parser_pdata *pdata, struct iio_device *dev);
 ssize_t rw_dev(struct parser_pdata *pdata, struct iio_device *dev,
 		unsigned int nb, bool is_write);
 
+ssize_t read_dev_reg(struct parser_pdata *pdata, struct iio_device *dev,
+		const char *addr);
+ssize_t write_dev_reg(struct parser_pdata *pdata, struct iio_device *dev,
+		const char *addr, const char *val);
+
 ssize_t read_dev_attr(struct parser_pdata *pdata, struct iio_device *dev,
 		const char *attr, enum iio_attr_type type);
 ssize_t write_dev_attr(struct parser_pdata *pdata, struct iio_device *dev,

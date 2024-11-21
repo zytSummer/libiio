@@ -1665,6 +1665,18 @@ static inline bool iio_device_is_hwmon(const struct iio_device *dev)
 	return id[0] == 'h';
 }
 
+/**
+ * @brief Get whether or not the device is a dpd device
+ * @param dev A pointer to an iio_device structure
+ * @return True if the device is a dpd device,
+ * false if it is a IIO device */
+static inline bool iio_device_is_dpd(const struct iio_device *dev)
+{
+	const char *id = iio_device_get_id(dev);
+
+	return id[0] == 'd';
+}
+
 
 /** @} *//* ------------------------------------------------------------------*/
 /* ------------------------- Low-level functions -----------------------------*/
