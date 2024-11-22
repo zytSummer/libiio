@@ -351,7 +351,7 @@ static ssize_t _dpd_dev_attr_12_show(char *dst)
 static ssize_t _dpd_dev_attr_12_store(const char *src)
 {
 	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
-	char buf[IIO_DPD_BUF_SIZE];
+	char *buf;
 	FILE *f;
 	ssize_t ret = 0;
 
@@ -360,7 +360,7 @@ static ssize_t _dpd_dev_attr_12_store(const char *src)
 	f = fopen(file_path, "we");
 	if (!f)
 		return -EIO;
-
+	buf = iio_strdup(src);
 	ret = fwrite(buf, 1, sizeof(buf)-1, f);
 	fclose(f);
 	return ret ? ret : -EIO;
@@ -406,7 +406,7 @@ static int _dpd_dev_chan_create_file(struct iio_dpd_channel *p_chan)
 	for (lp = 0; (p_attr = p_chan->pp_attr_array[lp]) != NULL; lp ++)
 	{
 		memset(file_name, 0x00, sizeof(file_name));
-		iio_snprintf(file_name, 0x00, "in_%s_%s", p_chan->name, p_attr->name);
+		iio_snprintf(file_name, sizeof(file_name), "in_%s_%s", p_chan->name, p_attr->name);
 		iio_snprintf(cmd, sizeof(cmd), "touch %s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, file_name);
 		ret = system(cmd);
 	}
@@ -441,7 +441,7 @@ static int _dpd_dev_attribut_init(void)
 	uint32_t lp = 0;
 
 	ret = _dpd_dev_create_fs();
-	if (!ret)
+	if (ret)
 	{
 		IIO_ERROR("Create dpd fs failed!\n");
 		return ret;
@@ -458,7 +458,7 @@ static int _dpd_dev_attribut_init(void)
 		if(type == TYPE_IS_ATTR)
 		{
 			tmp_ret = _dpd_dev_create_attr_file(iio_dpd_dev_array[lp].pElement);
-			if(!tmp_ret)
+			if(tmp_ret)
 			{
 				/* skip this error and continue */
 				IIO_WARNING("Cann't create dpd device attribute[%d]\n", lp);
@@ -468,7 +468,7 @@ static int _dpd_dev_attribut_init(void)
 		else if (type == TYPE_IS_CHAN)
 		{
 			tmp_ret = _dpd_dev_chan_create_file(iio_dpd_dev_array[lp].pElement);
-			if(!tmp_ret)
+			if(tmp_ret)
 			{
 				/* skip this error and continue */
 				IIO_WARNING("Cann't create dpd device channel attribute[%d]\n", lp);
@@ -482,6 +482,7 @@ static int _dpd_dev_attribut_init(void)
 		}
 	}
 
+	_dpd_dev_attr_12_store("dpd");
 	dpd_device_data.pdev_attr = iio_dpd_dev_array;
 	dpd_device_data.dev_attr_cnt = lp;
 
@@ -514,6 +515,7 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 	uint32_t lp = 0;
 	uint32_t attr_cnt = 0;
 	struct iio_dpd_dev_attr *dev_attr;
+	struct iio_dpd_attr *p_attr = NULL;
 
 	attr_cnt = dpd_device_data.dev_attr_cnt;
 
@@ -541,7 +543,9 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 		}
 		else if (dev_attr->attr_type == TYPE_IS_CHAN)
 		{
-			return _dpd_get_chan_attr_by_name((struct iio_dpd_channel *)(dev_attr->pElement), name);
+			p_attr = _dpd_get_chan_attr_by_name((struct iio_dpd_channel *)(dev_attr->pElement), name);
+			if (p_attr)
+				return p_attr;
 		}
 		else
 		{
@@ -559,13 +563,13 @@ int iio_dpd_device_pre_init(void)
 	int ret = 0;
 
 	ret = dpd_hw_open();
-	if (!ret)
+	if (ret)
 	{
 		IIO_ERROR("dpd device hardware open failed!\n");
 		goto out;
 	}
 	ret = _dpd_dev_attribut_init();
-	if (!ret)
+	if (ret)
 	{
 		IIO_ERROR("dpd device attribute init failed!\n");
 		goto out;
@@ -577,9 +581,13 @@ out:
 
 int iio_dpd_device_post_init(struct iio_device *dev)
 {
-	dev->userdata = (void *) &dpd_device_data;
+	int ret = 0;
+	if (dev)
+		dev->userdata = (void *) &dpd_device_data;
+	else
+		ret = -EFAULT;
 
-	return 0;
+	return ret;
 }
 
 int iio_dpd_close(const struct iio_device *dev);

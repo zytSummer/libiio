@@ -9,7 +9,7 @@ extern "C" {
 #include <sys/types.h>
 #include "dpd_hw.h"
 
-#define DPD_TMPFS_PATH 	"/mnt/tmp"
+#define DPD_TMPFS_PATH 	"/mnt"
 #define DPD_DEVICE_PATH "dpd"
 
 #ifdef WITH_DPD

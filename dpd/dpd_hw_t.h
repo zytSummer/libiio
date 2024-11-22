@@ -34,25 +34,30 @@
 #define ADDR_LUTID_H            0x0018
 
 // DPD ACT Out Select
-typedef enum{
+typedef enum {
     DPD_ENABLE      = 0x01u,
     DPD_BYPASS      = 0x02u,
     DPD_SHUTDOWN    = 0x04u,
     DPD_FREEZE      = 0x08u,
-} Dpd_ActOut_Sel;
+}Dpd_ActOut_Sel;
 
-enum {
+enum dpd_hw_init_e {
     DPD_HW_UNININED = 0x00,
     DPD_HW_ININED   = 0x01,
-}dpd_hw_init_e;
+};
+
+typedef struct tag_dpd_mem_space_t {
+    uint32_t phy_base;
+    uint32_t phy_size;
+} dpd_mem_space_t;
 
 typedef struct tag_dpd_hw_t {    
     uint8_t init_flag;
     int mem_fd;
-    void *dpd_ctrl_addr;
-    void *dpd_mem_addr;
-    void *dpd_cap0_addr;
-    void *dpd_cap1_addr;
+    dpd_mem_space_t dpd_ctrl;
+    dpd_mem_space_t dpd_mem;
+    dpd_mem_space_t dpd_cap0;
+    dpd_mem_space_t dpd_cap1;
 } dpd_hw_t;
 
 #endif
