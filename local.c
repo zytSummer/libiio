@@ -2157,7 +2157,7 @@ struct iio_context * local_create_context(void)
 #ifdef WITH_DPD
 	if (WITH_DPD) {
 		char path[100];
-		snprintf(path, 100, "%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH);
+		snprintf(path, 100, "%s", DPD_TMPFS_PATH);
 		iio_dpd_device_pre_init();
 		ret = foreach_in_dir(ctx, path, true, create_device);
 		iio_dpd_device_post_init(iio_context_find_device(ctx, "dpd"));

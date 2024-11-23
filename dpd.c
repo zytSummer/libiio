@@ -12,6 +12,7 @@
 #include "sort.h"
 #include "dpd_t_p.h"
 #include "dpd.h"
+#include "dpd_top.h"
 #include "dpd_utils.h"
 #include "dpd_t.h"
 
@@ -22,6 +23,15 @@
 
 
 #define IIO_DPD_BUF_SIZE 128
+
+static ssize_t _dpd_TrackCfg_attr_20_show(char *dst);
+static ssize_t _dpd_TrackCfg_attr_20_store(const char *dst);
+
+static ssize_t _dpd_TrackCfg_attr_21_show(char *dst);
+static ssize_t _dpd_TrackCfg_attr_21_store(const char *dst);
+
+static ssize_t _dpd_TrackCfg_attr_25_show(char *dst);
+static ssize_t _dpd_TrackCfg_attr_25_store(const char *dst);
 
 static ssize_t _dpd_dev_attr_12_show(char *dst);
 static ssize_t _dpd_dev_attr_12_store(const char *src);
@@ -59,12 +69,12 @@ IIO_DPD_ADD_CHAN_ATTR(TrackCfg, errCntLimit, 16);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, txMinAvgSignalLevel, 17);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, orxMinAvgSignalLevel, 18);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, direct, 19);
-//IIO_DPD_ADD_CHAN_ATTR(TrackCfg, indirectRegValue, 20);
-//IIO_DPD_ADD_CHAN_ATTR(TrackCfg, directRegValue, 21);
+IIO_DPD_ADD_UNIQUE_CHAN_ATTR(TrackCfg, indirectRegValue, _dpd_TrackCfg_attr_20_show, _dpd_TrackCfg_attr_20_store, 20);
+IIO_DPD_ADD_UNIQUE_CHAN_ATTR(TrackCfg, directRegValue, _dpd_TrackCfg_attr_21_show, _dpd_TrackCfg_attr_21_store, 21);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, mu, 22);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, magGain, 23);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, absScale, 24);
-//IIO_DPD_ADD_CHAN_ATTR(TrackCfg, absOffset, 25);
+IIO_DPD_ADD_UNIQUE_CHAN_ATTR(TrackCfg, absOffset, _dpd_TrackCfg_attr_25_show, _dpd_TrackCfg_attr_25_store, 25);
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, linearTerm, 26);
 
 ADD_CHAN_ATTR_ARRAY_ELEMENT_START(TrackCfg)
@@ -88,30 +98,34 @@ ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, errCntLimit, 16),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, txMinAvgSignalLevel, 17),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, orxMinAvgSignalLevel, 18),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, direct, 19),
-//ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, indirectRegValue, 20)
-//ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, directRegValue, 21)
+ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, indirectRegValue, 20),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, directRegValue, 21),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, mu, 22),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, magGain, 23),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, absScale, 24),
-//ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, absOffset, 25)
+ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, absOffset, 25),
 ADD_CHAN_ATTR_ARRAY_ELEMENT(TrackCfg, linearTerm, 26),
 ADD_CHAN_ATTR_ARRAY_ELEMENT_END(TrackCfg);
 
 /* generate dpd channel ModelDesc attribute */
 IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, features, 0);
-//IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, dpdPartial, 1);
-IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, mode, 2);     
-IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, actDepth, 3); 
-IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, lutIDelay, 4);
-IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, lutJDelay, 5);
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, dpdPartial.partial, 1);
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, dpdPartial.updateOrder, 2);
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, dpdPartial.modelIndex, 3);
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, mode, 4);     
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, actDepth, 5); 
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, lutIDelay, 6);
+IIO_DPD_ADD_CHAN_ATTR(DpdModelDesc, lutJDelay, 7);
 
 ADD_CHAN_ATTR_ARRAY_ELEMENT_START(DpdModelDesc)
 ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, features, 0),
-//ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, dpdPartial, 1)
-ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, mode, 2),
-ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, actDepth, 3),
-ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, lutIDelay, 4),
-ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, lutJDelay, 5),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, dpdPartial.partial, 1),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, dpdPartial.updateOrder, 2),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, dpdPartial.modelIndex, 3),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, mode, 4),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, actDepth, 5),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, lutIDelay, 6),
+ADD_CHAN_ATTR_ARRAY_ELEMENT(DpdModelDesc, lutJDelay, 7),
 ADD_CHAN_ATTR_ARRAY_ELEMENT_END(DpdModelDesc);
 
 /* generate dpd channel ActModelCfg */
@@ -162,7 +176,7 @@ IIO_DPD_ADD_DEV_CHAN(ActModelCfg,2);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(actLutSatFlag,3);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(capCfg.capDepth,4);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(capCfg.capBatch,5);
-IIO_DPD_ADD_DEV_DEFAULT_ATTR(actLutSatFlag,6);
+IIO_DPD_ADD_DEV_DEFAULT_ATTR(pathDelayMode,6);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(alignedSampleCount,7);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(featureSampleCount,8);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(procState,9);
@@ -180,7 +194,7 @@ ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_CHAN, ActModelCfg, 2),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, actLutSatFlag, 3),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, capCfg.capDepth, 4),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, capCfg.capBatch, 5),
-ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, actLutSatFlag, 6),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, pathDelayMode, 6),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, alignedSampleCount, 7),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, featureSampleCount, 8),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, procState, 9),
@@ -199,6 +213,75 @@ struct iio_dpd_device_data {
 };
 
 static struct iio_dpd_device_data dpd_device_data;
+
+static ssize_t _dpd_TrackCfg_attr_20_show(char *dst) 
+{ 
+	ssize_t ret; 
+	uint32_t val;
+	val = (uint32_t)(dpdData.pTrackCfg->indirectRegValue * 1000.0);
+	ret = iio_snprintf(dst, 128, "0x%08x", val); 
+	if (ret > 0) 
+		dst[ret] = '\0'; 
+	else 
+		dst[0] = '\0'; 
+	return ret ? ret : -5; 
+}
+
+static ssize_t _dpd_TrackCfg_attr_20_store(const char *src) 
+{ 
+	uint32_t val = 0; 
+	char *end; ssize_t ret=0; 
+	val = strtoul(src, &end, 16); 
+	ret = strlen(src); 
+	dpdData.pTrackCfg->indirectRegValue = (double)val/1000.0; 
+	return ret ? ret : -5; 
+}
+
+static ssize_t _dpd_TrackCfg_attr_21_show(char *dst) 
+{ 
+	ssize_t ret; 
+	uint32_t val;
+	val = (uint32_t)(dpdData.pTrackCfg->directRegValue * 1000.0);
+	ret = iio_snprintf(dst, 128, "0x%08x", val); 
+	if (ret > 0) 
+		dst[ret] = '\0'; 
+	else 
+		dst[0] = '\0'; 
+	return ret ? ret : -5; 
+} 
+
+static ssize_t _dpd_TrackCfg_attr_21_store(const char *src) 
+{ 
+	uint32_t val = 0; 
+	char *end; ssize_t ret=0; 
+	val = strtoul(src, &end, 16); 
+	ret = strlen(src); 
+	dpdData.pTrackCfg->directRegValue = (double)val/1000.0; 
+	return ret ? ret : -5; 
+}
+
+static ssize_t _dpd_TrackCfg_attr_25_show(char *dst) 
+{ 
+	ssize_t ret; 
+	uint32_t val;
+	val = (uint32_t)(dpdData.pTrackCfg->absOffset * 1000.0);
+	ret = iio_snprintf(dst, 128, "0x%08x", val); 
+	if (ret > 0) 
+		dst[ret] = '\0'; 
+	else 
+		dst[0] = '\0'; 
+	return ret ? ret : -5; 
+} 
+
+static ssize_t _dpd_TrackCfg_attr_25_store(const char *src) 
+{ 
+	uint32_t val = 0; 
+	char *end; ssize_t ret=0; 
+	val = strtoul(src, &end, 16); 
+	ret = strlen(src); 
+	dpdData.pTrackCfg->absOffset = (double)val/1000.0; 
+	return ret ? ret : -5; 
+}
 
 static ssize_t _dpd_dev_attr_14_show(char *dst)
 {
@@ -233,7 +316,7 @@ static ssize_t _dpd_dev_attr_14_show(char *dst)
 
 	if (ret > 0) 
 	{
-		dst[ret - 1] = '\0';
+		dst[ret] = '\0';
 	}
 	else
 		dst[0] = '\0';
@@ -317,7 +400,7 @@ static ssize_t _dpd_dev_attr_13_show(char *dst)
 
 	if (ret > 0) 
 	{
-		dst[ret - 1] = '\0';
+		dst[ret] = '\0';
 	}
 	else
 		dst[0] = '\0';
@@ -341,7 +424,7 @@ static ssize_t _dpd_dev_attr_12_show(char *dst)
 	fclose(f);
 	if (ret > 0) 
 	{
-		dst[ret - 1] = '\0';
+		dst[ret] = '\0';
 	}
 	else
 		dst[0] = '\0';
@@ -407,6 +490,7 @@ static int _dpd_dev_chan_create_file(struct iio_dpd_channel *p_chan)
 	{
 		memset(file_name, 0x00, sizeof(file_name));
 		iio_snprintf(file_name, sizeof(file_name), "in_%s_%s", p_chan->name, p_attr->name);
+		iio_snprintf(p_attr->file_name, sizeof(file_name), "%s", file_name);
 		iio_snprintf(cmd, sizeof(cmd), "touch %s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, file_name);
 		ret = system(cmd);
 	}
@@ -428,6 +512,7 @@ static int _dpd_dev_create_attr_file(struct iio_dpd_attr *p_attr)
 	}
 
 	iio_snprintf(cmd, sizeof(cmd), "touch %s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, p_attr->name);
+	iio_snprintf(p_attr->file_name, sizeof(cmd), "%s", p_attr->name);
 	ret = system(cmd);
 
 	return ret;
@@ -489,7 +574,7 @@ static int _dpd_dev_attribut_init(void)
 	return ret;
 }
 
-static struct iio_dpd_attr *_dpd_get_chan_attr_by_name(const struct iio_dpd_channel *pchan, const char *name)
+static struct iio_dpd_attr *_dpd_get_chan_attr_by_name(const struct iio_dpd_channel *pchan, const char *attr)
 {
 	uint32_t lp = 0;
 	uint32_t attr_cnt = 0;
@@ -500,7 +585,7 @@ static struct iio_dpd_attr *_dpd_get_chan_attr_by_name(const struct iio_dpd_chan
 	for (lp = 0; lp < attr_cnt; lp ++)
 	{
 		dev_attr = pchan->pp_attr_array[lp];
-		if (!strcmp(name, dev_attr->name))
+		if (!strcmp(attr, dev_attr->file_name))
 		{
 			return dev_attr;
 		}
@@ -510,7 +595,7 @@ static struct iio_dpd_attr *_dpd_get_chan_attr_by_name(const struct iio_dpd_chan
 	return NULL;
 }
 
-static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
+static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *attr)
 {
 	uint32_t lp = 0;
 	uint32_t attr_cnt = 0;
@@ -519,7 +604,7 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 
 	attr_cnt = dpd_device_data.dev_attr_cnt;
 
-	if (!name)
+	if (!attr)
 	{
 		IIO_ERROR("input name is null\n");
 		return NULL;
@@ -535,7 +620,7 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 		}
 		if (dev_attr->attr_type == TYPE_IS_ATTR)
 		{
-			if (!strcmp(name, ((struct iio_dpd_attr *)(dev_attr->pElement))->name))
+			if (!strcmp(attr, ((struct iio_dpd_attr *)(dev_attr->pElement))->file_name))
 			{
 				return (struct iio_dpd_attr *)(dev_attr->pElement);
 			}
@@ -543,7 +628,7 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 		}
 		else if (dev_attr->attr_type == TYPE_IS_CHAN)
 		{
-			p_attr = _dpd_get_chan_attr_by_name((struct iio_dpd_channel *)(dev_attr->pElement), name);
+			p_attr = _dpd_get_chan_attr_by_name((struct iio_dpd_channel *)(dev_attr->pElement), attr);
 			if (p_attr)
 				return p_attr;
 		}
@@ -556,6 +641,44 @@ static struct iio_dpd_attr *_dpd_get_dev_attr_by_name(const char *name)
 
 	return NULL;
 
+}
+
+int _dpd_buffer_analyze(unsigned int nb, const char *src, size_t len)
+{
+	while (nb--) {
+		int32_t val;
+
+		if (len < 4)
+			return -EINVAL;
+
+		val = (int32_t) iio_be32toh(*(uint32_t *) src);
+		src += 4;
+		len -= 4;
+
+		if (val > 0) {
+			if ((uint32_t) val > len)
+				return -EINVAL;
+
+			/* Align the length to 4 bytes */
+			if (val & 3)
+				val = ((val >> 2) + 1) << 2;
+			len -= val;
+			src += val;
+		}
+	}
+
+	/* We should have analyzed the whole buffer by now */
+	return !len ? 0 : -EINVAL;
+}
+
+static const char * _dpd_get_filename(const struct iio_channel *chn,
+		const char *attr)
+{
+	unsigned int i;
+	for (i = 0; i < chn->nb_attrs; i++)
+		if (!strcmp(attr, chn->attrs[i].name))
+			return chn->attrs[i].filename;
+	return attr;
 }
 
 int iio_dpd_device_pre_init(void)
@@ -572,6 +695,13 @@ int iio_dpd_device_pre_init(void)
 	if (ret)
 	{
 		IIO_ERROR("dpd device attribute init failed!\n");
+		goto out;
+	}
+
+	ret = dpd_Init(&dpdData);
+	if (ret)
+	{
+		IIO_ERROR("dpd init failed!\n");
 		goto out;
 	}
 
@@ -1085,38 +1215,13 @@ ssize_t iio_dpd_read_dev_attr(const struct iio_device *dev,
 
 	if (pattr)
 	{
-		ret = pattr->show(dst);
+		if (pattr->show)
+			ret = pattr->show(dst);
+		else
+			ret = -ESRCH;
 	}
 
 	return ret ? ret : -EIO;
-}
-
-int _dpd_buffer_analyze(unsigned int nb, const char *src, size_t len)
-{
-	while (nb--) {
-		int32_t val;
-
-		if (len < 4)
-			return -EINVAL;
-
-		val = (int32_t) iio_be32toh(*(uint32_t *) src);
-		src += 4;
-		len -= 4;
-
-		if (val > 0) {
-			if ((uint32_t) val > len)
-				return -EINVAL;
-
-			/* Align the length to 4 bytes */
-			if (val & 3)
-				val = ((val >> 2) + 1) << 2;
-			len -= val;
-			src += val;
-		}
-	}
-
-	/* We should have analyzed the whole buffer by now */
-	return !len ? 0 : -EINVAL;
 }
 
 ssize_t iio_dpd_write_all_dev_attrs(const struct iio_device *dev,
@@ -1187,7 +1292,10 @@ ssize_t iio_dpd_write_dev_attr(const struct iio_device *dev,
 
 	if (pattr)
 	{
-		ret = pattr->store(src);
+		if (pattr->store)
+			ret = pattr->store(src);
+		else
+			ret = -ESRCH;
 	}
 
 	return ret ? ret : -EIO;
@@ -1214,17 +1322,6 @@ ssize_t iio_dpd_read_all_chn_attrs(const struct iio_channel *chn,
 
 	return ptr - dst;
 }
-
-static const char * _dpd_get_filename(const struct iio_channel *chn,
-		const char *attr)
-{
-	unsigned int i;
-	for (i = 0; i < chn->nb_attrs; i++)
-		if (!strcmp(attr, chn->attrs[i].name))
-			return chn->attrs[i].filename;
-	return attr;
-}
-
 
 ssize_t iio_dpd_read_chn_attr(const struct iio_channel *chn,
 		const char *attr, char *dst, size_t len)

@@ -63,6 +63,12 @@ static const char * const hwmon_chan_type_name_spec[] = {
 	[HWMON_INTRUSION] = "intrusion",
 };
 
+static const char * const dpd_chan_type_name_spec[] = {
+	[DPD_TRACKCFG] = "TrackCfg",
+	[DPD_MODELDESC] = "DpdModelDesc",
+	[DPD_ACTMODELCFG] = "ActModelCfg",
+};
+
 static const char * const modifier_names[] = {
 	[IIO_MOD_X] = "x",
 	[IIO_MOD_Y] = "y",
@@ -186,6 +192,9 @@ void iio_channel_init_finalize(struct iio_channel *chn)
 	if (iio_device_is_hwmon(chn->dev)) {
 		type = iio_channel_find_type(chn->id, hwmon_chan_type_name_spec,
 					ARRAY_SIZE(hwmon_chan_type_name_spec));
+	} else if (iio_device_is_dpd(chn->dev)) {
+		type = iio_channel_find_type(chn->id, dpd_chan_type_name_spec,
+							ARRAY_SIZE(dpd_chan_type_name_spec));
 	} else {
 		type = iio_channel_find_type(chn->id, iio_chan_type_name_spec,
 					ARRAY_SIZE(iio_chan_type_name_spec));

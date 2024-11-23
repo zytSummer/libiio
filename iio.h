@@ -1643,6 +1643,13 @@ enum hwmon_chan_type {
 	HWMON_CHAN_TYPE_UNKNOWN = IIO_CHAN_TYPE_UNKNOWN,
 };
 
+enum dpd_chan_type {
+	DPD_TRACKCFG,
+	DPD_MODELDESC,
+	DPD_ACTMODELCFG,
+	DPD_CHAN_TYPE_UNKNOWN = IIO_CHAN_TYPE_UNKNOWN,
+};
+
 /**
  * @brief Get the type of the given hwmon channel
  * @param chn A pointer to an iio_channel structure
