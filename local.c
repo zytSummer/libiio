@@ -954,7 +954,7 @@ static int local_open(const struct iio_device *dev,
 	if (iio_device_is_dpd(dev))
 	{
 		/* dpd operation */
-		iio_dpd_open(dev, samples_count, cyclic);
+		return iio_dpd_open(dev, samples_count, cyclic);
 	}
 	
 	ret = local_buffer_enabled_set(dev, false);
@@ -1061,7 +1061,7 @@ static int local_close(const struct iio_device *dev)
 	if (iio_device_is_dpd(dev))
 	{
 		/* dpd operation */
-		iio_dpd_close(dev);
+		return iio_dpd_close(dev);
 	}
 
 	ret = 0;

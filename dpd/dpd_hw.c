@@ -424,16 +424,16 @@ uint32_t dpd_hw_open(void)
     }
 
     s_g_dpd_hw.dpd_ctrl.phy_size = DPD_CTRL_SIZE;
-    s_g_dpd_hw.dpd_ctrl.phy_size = DPD_CTRL_BASEADDR;
+    s_g_dpd_hw.dpd_ctrl.phy_base = DPD_CTRL_BASEADDR;
 
     s_g_dpd_hw.dpd_mem.phy_size = DPD_MEM_SIZE;
-    s_g_dpd_hw.dpd_mem.phy_size = DPD_MEM_BASEADDR;
+    s_g_dpd_hw.dpd_mem.phy_base = DPD_MEM_BASEADDR;
 
     s_g_dpd_hw.dpd_cap0.phy_size = DPD_CAP0_SIZE;
-    s_g_dpd_hw.dpd_cap0.phy_size = DPD_CAP0_BASEADDR;
+    s_g_dpd_hw.dpd_cap0.phy_base = DPD_CAP0_BASEADDR;
 
     s_g_dpd_hw.dpd_cap1.phy_size = DPD_CAP1_SIZE;
-    s_g_dpd_hw.dpd_cap1.phy_size = DPD_CAP1_BASEADDR;
+    s_g_dpd_hw.dpd_cap1.phy_base = DPD_CAP1_BASEADDR;
 
     s_g_dpd_hw.init_flag = DPD_HW_ININED;
 

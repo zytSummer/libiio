@@ -207,7 +207,7 @@ ADD_DEV_ATTR_ARRAY_ELEMENT_END();
 
 
 struct iio_dpd_device_data {
-	int fd;
+	int fd;		/* don't move the position of this element!! */
 	struct iio_dpd_dev_attr *pdev_attr;
 	uint32_t dev_attr_cnt;
 };
@@ -465,6 +465,22 @@ static int _dpd_dev_create_fs(void)
 	return ret;
 }
 
+static int _dpd_dev_destroy_fs(void)
+{
+	int ret;
+	char cmd[100] = {0,};
+
+	iio_snprintf(cmd, 100, "rm -rf %s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH);
+	ret = system(cmd);
+
+	memset(cmd, 0x00, sizeof(cmd));
+	/* mount the tmpfs to the mount point /tmp folder */
+	iio_snprintf(cmd, 100, "umount %s", DPD_TMPFS_PATH);
+	ret = system(cmd);
+
+	return ret;
+}
+
 static int _dpd_dev_chan_create_file(struct iio_dpd_channel *p_chan)
 {
 	int ret;
@@ -712,10 +728,16 @@ out:
 int iio_dpd_device_post_init(struct iio_device *dev)
 {
 	int ret = 0;
+	struct iio_dpd_device_data *pdata = dev->pdata;
+
 	if (dev)
 		dev->userdata = (void *) &dpd_device_data;
 	else
 		ret = -EFAULT;
+	
+	/* set the file handler of dpd "device" every time it inits 
+	 * so that the close function can be called when release the context */
+	pdata->fd = 1;
 
 	return ret;
 }
@@ -726,190 +748,28 @@ int iio_dpd_open(const struct iio_device *dev,
 		size_t samples_count, bool cyclic)
 {
 	int ret = 0;
-#if 0
-	unsigned int i;
-	char buf[1024];
-	struct iio_dpd_device_data *pdata = dev->userdata;
-
-	if (pdata->fd != -1)
-		return -EBUSY;
-	/* TBD */
-	ret = iio_dpd_buffer_enabled_set(dev, false);
-	if (ret < 0)
-		return ret;
-
-	iio_snprintf(buf, sizeof(buf), "%lu", (unsigned long) samples_count);
-	ret = iio_dpd_write_dev_attr(dev, "buffer/length",
-			buf, strlen(buf) + 1, false);
-	if (ret < 0)
-		return ret;
-
-	/*
-	 * Set watermark to the buffer size; the driver will adjust to its
-	 * maximum if it's too high without issuing an error.
-	 */
-	ret = iio_dpd_write_dev_attr(dev, "buffer/watermark",
-				   buf, strlen(buf) + 1, false);
-	if (ret < 0 && ret != -ENOENT && ret != -EACCES)
-		return ret;
-
-	pdata->cancel_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-	if (pdata->cancel_fd == -1)
-		return -errno;
-
-	iio_snprintf(buf, sizeof(buf), "/dev/%s", dev->id);
-	pdata->fd = open(buf, O_RDWR | O_CLOEXEC | O_NONBLOCK);
-	if (pdata->fd == -1) {
-		close(pdata->cancel_fd);
-		return -errno;
-	}
-
-	/* Disable channels */
-	for (i = 0; i < dev->nb_channels; i++) {
-		struct iio_channel *chn = dev->channels[i];
-		if (chn->index >= 0 && !iio_channel_is_enabled(chn)) {
-			ret = channel_write_state(chn, false);
-			if (ret < 0)
-				goto err_close;
-		}
-	}
-	/* Enable channels */
-	for (i = 0; i < dev->nb_channels; i++) {
-		struct iio_channel *chn = dev->channels[i];
-		if (chn->index >= 0 && iio_channel_is_enabled(chn)) {
-			ret = channel_write_state(chn, true);
-			if (ret < 0)
-				goto err_close;
-		}
-	}
-
-	pdata->cyclic = cyclic;
-	pdata->cyclic_buffer_enqueued = false;
-	pdata->samples_count = samples_count;
-
-	if (WITH_LOCAL_MMAP_API) {
-		ret = enable_high_speed(dev);
-		if (ret < 0 && ret != -ENOSYS)
-			goto err_close;
-
-		pdata->is_high_speed = !ret;
-	}
-
-	if (!pdata->is_high_speed) {
-		unsigned long size = samples_count * pdata->max_nb_blocks;
-		IIO_WARNING("High-speed mode not enabled\n");
-
-		/* Cyclic mode is only supported in high-speed mode */
-		if (cyclic) {
-			ret = -EPERM;
-			goto err_close;
-		}
-
-		/* Increase the size of the kernel buffer, when using the
-		 * low-speed interface. This avoids losing samples when
-		 * refilling the iio_buffer. */
-		iio_snprintf(buf, sizeof(buf), "%lu", size);
-		ret = iio_dpd_write_dev_attr(dev, "buffer/length",
-				buf, strlen(buf) + 1, false);
-		if (ret < 0)
-			goto err_close;
-	}
-
-	ret = iio_dpd_buffer_enabled_set(dev, true);
-	if (ret < 0)
-		goto err_close;
-
-	return 0;
-err_close:
-	iio_dpd_close(dev);
-#endif
 	return ret;
 }
 
 int iio_dpd_close(const struct iio_device *dev)
 {
 	int ret = 0;
-#if 0
-	struct iio_dpd_device_data *pdata = dev->userdata;
-	unsigned int i;
-	char err_str[32];
-	int ret1;
 
-	if (pdata->fd == -1)
-		return -EBADF;
-
-	/* TBD */
-	ret = 0;
-	ret1 = 0;
-	if (pdata->is_high_speed) {
-		if (pdata->addrs) {
-			for (i = 0; i < pdata->allocated_nb_blocks; i++)
-				munmap(pdata->addrs[i], pdata->blocks[i].size);
-		}
-		if (pdata->fd > -1)
-			ret = ioctl_nointr(pdata->fd, BLOCK_FREE_IOCTL, 0);
-		if (ret) {
-			iio_strerror(-ret, err_str, sizeof(err_str));
-			IIO_ERROR("Error during ioctl(): %s\n", err_str);
-		}
-		pdata->allocated_nb_blocks = 0;
-		free(pdata->addrs);
-		pdata->addrs = NULL;
-		free(pdata->blocks);
-		pdata->blocks = NULL;
+	ret = dpd_hw_close();
+	if(ret)
+	{
+		IIO_ERROR("Failed to close dpd hardware\n");
+		goto out;
 	}
 
-	ret1 = close(pdata->fd);
-	if (ret1) {
-		ret1 = -errno;
-		iio_strerror(errno, err_str, sizeof(err_str));
-		IIO_ERROR("Error during close() of main FD: %s\n", err_str);
-		if (ret == 0)
-			ret = ret1;
+	ret = _dpd_dev_destroy_fs();
+	if(ret)
+	{
+		IIO_ERROR("Failed to destroy dpd device file system\n");
+		goto out;
 	}
 
-	pdata->fd = -1;
-
-	if (pdata->cancel_fd > -1) {
-		ret1 = close(pdata->cancel_fd);
-		pdata->cancel_fd = -1;
-
-		if (ret1) {
-			ret1 = -errno;
-			iio_strerror(errno, err_str, sizeof(err_str));
-			IIO_ERROR("Error during close() of cancel FD): %s\n",
-				  err_str);
-			if (ret == 0)
-				ret = ret1;
-		}
-	}
-
-	ret1 = iio_dpd_buffer_enabled_set(dev, false);
-	if (ret1) {
-		iio_strerror(-ret1, err_str, sizeof(err_str));
-		IIO_ERROR("Error during buffer disable: %s\n", err_str);
-		if (ret == 0)
-			ret = ret1;
-	}
-
-	for (i = 0; i < dev->nb_channels; i++) {
-		struct iio_channel *chn = dev->channels[i];
-
-		if (!chn->pdata->enable_fn)
-			continue;
-
-		ret1 = channel_write_state(chn, false);
-		if (ret1 == 0)
-			continue;
-
-		ret1 = -errno;
-		iio_strerror(errno, err_str, sizeof(err_str));
-		IIO_ERROR("Error during channel[%u] disable: %s\n",
-			  i, err_str);
-		if (ret == 0)
-			ret = ret1;
-	}
-#endif
+out:
 	return ret;
 }
 
