@@ -42,25 +42,26 @@ struct iio_dpd_dev_attr {
 	void *pElement;
 };
 
-#define DECLARE_IIO_DPD_DATA	dpd_TrackData_t dpdData
+#define DECLARE_IIO_DPD_DATA												\
+dpd_TrackData_t dpdData
 
 extern dpd_TrackData_t dpdData;
 
 
 
 #define IIO_DPD_ADD_CHAN_ATTR(chan, attr, index) 							\
-ssize_t _dpd_##chan##_attr_##index##_show(char *dst)						\
+ssize_t _dpd_##chan##_attr_##index##_show(char *dst)			\
 {																			\
 	ssize_t ret;															\
 	ret = iio_snprintf(dst, IIO_DPD_ATTR_LEN, "0x%08x", (uint32_t)(dpdData.p##chan->attr));	\
 																			\
 	if (ret > 0)															\
-		dst[ret] = '\0';													\
+		dst[ret] = '\0';												\
 	else																	\
 		dst[0] = '\0';														\
 	return ret ? ret : -EIO;												\
 }																			\
-ssize_t _dpd_##chan##_attr_##index##_store(const char *src)					\
+ssize_t _dpd_##chan##_attr_##index##_store(const char *src)			\
 {																			\
 	__typeof__(dpdData.p##chan->attr) val = 0;								\
 	char *end;																\
@@ -150,11 +151,11 @@ struct iio_dpd_dev_attr iio_dpd_dev_array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
 	[index] = {																\
 		.id = index,														\
 		.attr_type = type,													\
-		.pElement = (void *)&dpd_attr_##index##_t							\
+		.pElement = (void *)&dpd_attr_##index##_t									\
 	}
 
 #define ADD_DEV_ATTR_ARRAY_ELEMENT_END()									\
-	{0,0,NULL},																\
+	{0,0,NULL},																	\
 }
 
 

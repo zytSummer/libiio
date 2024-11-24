@@ -301,7 +301,7 @@ static ssize_t _dpd_dev_attr_14_show(char *dst)
 		return -EIO;
 
 	ret = fread(buf, 1, sizeof(buf)-1, f);
-	val = strtoul(buf, &end, 16);
+	val = strtoul(buf, &end, 0);
 	tmp_ret = dpd_hw_mem_read(val, &rd_val);
 	if (!tmp_ret)
 	{
@@ -327,7 +327,7 @@ static ssize_t _dpd_dev_attr_14_store(const char *src)
 {
 	uint32_t val[2] = {0,};
 	ssize_t ret = 0;
-	uint32_t argc;
+	int argc;
 	char *str_tmp = NULL;
 	char *var[2] = {NULL, NULL};
 	char *rest = NULL;
@@ -339,11 +339,11 @@ static ssize_t _dpd_dev_attr_14_store(const char *src)
 	for (argc = 0; argc < 2; argc ++)
 	{
 		var[argc] = iio_strtok_r(str_tmp, " ", &rest); 
+		str_tmp = iio_strdup(rest);
 		if (var[argc])
-			val[argc] = strtoul(var[argc], &end, 16);
+			val[argc] = strtoul(var[argc], &end, 0);
 		else 
 		{
-			argc --;
 			break;
 		}
 	}
@@ -357,11 +357,7 @@ static ssize_t _dpd_dev_attr_14_store(const char *src)
 	fwrite(var[0], 1, strlen(var[0]), f);
 	fclose(f);
 
-	if (argc == 0) 
-	{
-		return -EFAULT;
-	} 
-	else if (argc == 1) 
+	if (argc == 1) 
 	{
 		ret = strlen(src);
 	}
@@ -1065,9 +1061,9 @@ ssize_t iio_dpd_read_dev_attr(const struct iio_device *dev,
 
 	switch (type) {
 		case IIO_ATTR_TYPE_DEVICE:
+		case IIO_ATTR_TYPE_DEBUG:
 			pattr = _dpd_get_dev_attr_by_name(attr);
 			break;
-		case IIO_ATTR_TYPE_DEBUG:	/* not support */
 		case IIO_ATTR_TYPE_BUFFER:	/* not support */
 		default:
 			return -EINVAL;
@@ -1142,9 +1138,9 @@ ssize_t iio_dpd_write_dev_attr(const struct iio_device *dev,
 
 	switch (type) {
 		case IIO_ATTR_TYPE_DEVICE:
+		case IIO_ATTR_TYPE_DEBUG:
 			pattr = _dpd_get_dev_attr_by_name(attr);
 			break;
-		case IIO_ATTR_TYPE_DEBUG:	/* not support */
 		case IIO_ATTR_TYPE_BUFFER:	/* not support */
 		default:
 			return -EINVAL;
