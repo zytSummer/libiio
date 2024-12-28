@@ -111,22 +111,22 @@ int32_t dpd_hw_mem_write(uint32_t addr, uint32_t data)
     uint32_t base = 0x00;
     uint32_t offset = 0x00;
     
-    if (addr >= DPD_CTRL_BASEADDR && addr <= DPD_CTRL_BASEADDR + DPD_CTRL_SIZE)
+    if (addr >= DPD_CTRL_BASEADDR && addr < DPD_CTRL_BASEADDR + DPD_CTRL_SIZE)
     {
         base = DPD_CTRL_BASEADDR;
         offset = addr - DPD_CTRL_BASEADDR;
     } 
-    else if (addr >= DPD_MEM_BASEADDR && addr <= DPD_MEM_BASEADDR + DPD_MEM_SIZE)
+    else if (addr >= DPD_MEM_BASEADDR && addr < DPD_MEM_BASEADDR + DPD_MEM_SIZE)
     {
         base = DPD_MEM_BASEADDR;
         offset = addr - DPD_MEM_BASEADDR;
     } 
-    else if (addr >= DPD_CAP0_BASEADDR && addr <= DPD_CAP0_BASEADDR + DPD_CAP0_SIZE)
+    else if (addr >= DPD_CAP0_BASEADDR && addr < DPD_CAP0_BASEADDR + DPD_CAP0_SIZE)
     {
         base = DPD_CAP0_BASEADDR;
         offset = addr - DPD_CAP0_BASEADDR;
     } 
-    else if (addr >= DPD_CAP1_BASEADDR && addr <= DPD_CAP1_BASEADDR + DPD_CAP1_SIZE)
+    else if (addr >= DPD_CAP1_BASEADDR && addr < DPD_CAP1_BASEADDR + DPD_CAP1_SIZE)
     {
         base = DPD_CAP1_BASEADDR;
         offset = addr - DPD_CAP1_BASEADDR;
@@ -147,22 +147,22 @@ int32_t dpd_hw_mem_read(uint32_t addr, uint32_t *data)
     uint32_t base = 0x00;
     uint32_t offset = 0x00;
     
-    if (addr >= DPD_CTRL_BASEADDR && addr <= DPD_CTRL_BASEADDR + DPD_CTRL_SIZE)
+    if (addr >= DPD_CTRL_BASEADDR && addr < DPD_CTRL_BASEADDR + DPD_CTRL_SIZE)
     {
         base = DPD_CTRL_BASEADDR;
         offset = addr - DPD_CTRL_BASEADDR;
     } 
-    else if (addr >= DPD_MEM_BASEADDR && addr <= DPD_MEM_BASEADDR + DPD_MEM_SIZE)
+    else if (addr >= DPD_MEM_BASEADDR && addr < DPD_MEM_BASEADDR + DPD_MEM_SIZE)
     {
         base = DPD_MEM_BASEADDR;
         offset = addr - DPD_MEM_BASEADDR;
     } 
-    else if (addr >= DPD_CAP0_BASEADDR && addr <= DPD_CAP0_BASEADDR + DPD_CAP0_SIZE)
+    else if (addr >= DPD_CAP0_BASEADDR && addr < DPD_CAP0_BASEADDR + DPD_CAP0_SIZE)
     {
         base = DPD_CAP0_BASEADDR;
         offset = addr - DPD_CAP0_BASEADDR;
     } 
-    else if (addr >= DPD_CAP1_BASEADDR && addr <= DPD_CAP1_BASEADDR + DPD_CAP1_SIZE)
+    else if (addr >= DPD_CAP1_BASEADDR && addr < DPD_CAP1_BASEADDR + DPD_CAP1_SIZE)
     {
         base = DPD_CAP1_BASEADDR;
         offset = addr - DPD_CAP1_BASEADDR;

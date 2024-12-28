@@ -2172,6 +2172,13 @@ struct iio_context * local_create_context(void)
 		iio_device_compare);
 
 	foreach_in_dir(ctx, "/sys/kernel/debug/iio", true, add_debug);
+	#ifdef WITH_DPD
+	if (WITH_DPD) {
+		char path[100];
+		snprintf(path, 100, "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, DPD_DEVICE_DEBUG_PATH);
+		foreach_in_dir(ctx, path, true, add_debug);
+	}
+	#endif
 
 	init_scan_elements(ctx);
 

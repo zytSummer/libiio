@@ -8,16 +8,22 @@
 #define __weak __attribute__((weak))
 #endif
 
+#ifndef __GNUC__
+#define __typeof__ typeof
+#endif
+
 #define IIO_DPD_MAX_DEV_ATTR_CNT					64
 #define IIO_DPD_MAX_CHAN_ATTR_CNT					64
 
 #define IIO_DPD_ATTR_LEN							128
 #define IIO_DPD_ATTR_NAME_LEN						128
+#define IIO_DPD_ATTR_SCAN_TYPE_LEN					16
 
 struct iio_dpd_attr {
 	char name[IIO_DPD_ATTR_NAME_LEN];		/* don't move the definition position */
 	uint32_t id;							/* don't move the definition position */
 	char file_name[IIO_DPD_ATTR_NAME_LEN];
+	uint32_t debug;
 	//uint32_t order;
 	//void *pParent;
 	ssize_t (*store)(const char *);
@@ -30,6 +36,8 @@ struct iio_dpd_channel {
 	//uint32_t order;						/* the order of channel, start from 0 when it is under dpdData */
 	//void *pParent;
 	uint32_t attr_cnt;
+	uint32_t is_scan;
+	char scan_type[IIO_DPD_ATTR_SCAN_TYPE_LEN];
 	struct iio_dpd_attr **pp_attr_array;
 };
 
@@ -42,26 +50,24 @@ struct iio_dpd_dev_attr {
 	void *pElement;
 };
 
-#define DECLARE_IIO_DPD_DATA												\
-dpd_TrackData_t dpdData
+#define DECLARE_IIO_DPD_DATA	dpd_TrackData_t dpdData
 
 extern dpd_TrackData_t dpdData;
 
 
-
 #define IIO_DPD_ADD_CHAN_ATTR(chan, attr, index) 							\
-ssize_t _dpd_##chan##_attr_##index##_show(char *dst)			\
+ssize_t _dpd_##chan##_attr_##index##_show(char *dst)						\
 {																			\
 	ssize_t ret;															\
 	ret = iio_snprintf(dst, IIO_DPD_ATTR_LEN, "0x%08x", (uint32_t)(dpdData.p##chan->attr));	\
 																			\
 	if (ret > 0)															\
-		dst[ret] = '\0';												\
+		dst[ret] = '\0';													\
 	else																	\
 		dst[0] = '\0';														\
 	return ret ? ret : -EIO;												\
 }																			\
-ssize_t _dpd_##chan##_attr_##index##_store(const char *src)			\
+ssize_t _dpd_##chan##_attr_##index##_store(const char *src)					\
 {																			\
 	__typeof__(dpdData.p##chan->attr) val = 0;								\
 	char *end;																\
@@ -75,20 +81,34 @@ ssize_t _dpd_##chan##_attr_##index##_store(const char *src)			\
 struct iio_dpd_attr chan##_attr_##index##_t = {								\
 	.name = #attr,															\
 	.id = index,															\
+	.debug = false,															\
 	.show = &_dpd_##chan##_attr_##index##_show, 							\
 	.store = &_dpd_##chan##_attr_##index##_store, 							\
 }
 
 #define IIO_DPD_ADD_UNIQUE_CHAN_ATTR(chan, attr, show_cb, store_cb, index) 	\
+ssize_t _dpd_##chan##_attr_##index##_show(char *dst)						\
+{																			\
+	ssize_t ret=0;															\
+	ret = show_cb(dst);														\
+	return ret ? ret : -EIO;												\
+}																			\
+ssize_t _dpd_##chan##_attr_##index##_store(const char *src)					\
+{																			\
+	ssize_t ret=0;															\
+	ret = store_cb(src);													\
+	return ret ? ret : -EIO;												\
+}																			\
 struct iio_dpd_attr chan##_attr_##index##_t = {								\
 	.name = #attr,															\
 	.id = index,															\
-	.show = show_cb, 														\
-	.store = store_cb, 														\
+	.debug = false,															\
+	.show = &_dpd_##chan##_attr_##index##_show, 							\
+	.store = &_dpd_##chan##_attr_##index##_store, 							\
 }
 
 #define ADD_CHAN_ATTR_ARRAY_ELEMENT_START(chan)								\
-struct iio_dpd_attr *iio_dpd_##chan##array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
+struct iio_dpd_attr *iio_dpd_##chan##_array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
 
 #define ADD_CHAN_ATTR_ARRAY_ELEMENT(chan, attr, index) 						\
 	[index] = &chan##_attr_##index##_t
@@ -101,9 +121,18 @@ struct iio_dpd_attr *iio_dpd_##chan##array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
 struct iio_dpd_channel dpd_attr_##index##_t = {								\
 	.name = #chan,															\
 	.id = index,															\
-	.pp_attr_array = iio_dpd_##chan##array, 								\
+	.is_scan = false,														\
+	.pp_attr_array = iio_dpd_##chan##_array, 								\
 }
 
+#define IIO_DPD_ADD_DEV_SCAN_CHAN(chan, index, type)						\
+struct iio_dpd_channel dpd_attr_##index##_t = {								\
+	.name = #chan,															\
+	.id = index,															\
+	.is_scan = true,														\
+	.scan_type = type,														\
+	.pp_attr_array = iio_dpd_##chan##_array, 								\
+}
 
 #define IIO_DPD_ADD_DEV_DEFAULT_ATTR(attr, index) 							\
 static ssize_t _dpd_dev_attr_##index##_show(char *dst)						\
@@ -131,15 +160,38 @@ static ssize_t _dpd_dev_attr_##index##_store(const char *src)				\
 struct iio_dpd_attr dpd_attr_##index##_t = {								\
 	.name = #attr,															\
 	.id = index,															\
+	.debug = false,															\
 	.show = &_dpd_dev_attr_##index##_show, 									\
 	.store = &_dpd_dev_attr_##index##_store, 								\
 }
 
 
 #define IIO_DPD_ADD_DEV_UNIQUE_ATTR(attr, show_cb, store_cb, index) 		\
+static ssize_t _dpd_dev_attr_##index##_show(char *dst)						\
+{																			\
+	ssize_t ret=0;															\
+	ret = show_cb(dst);														\
+	return ret ? ret : -EIO;												\
+}																			\
+static ssize_t _dpd_dev_attr_##index##_store(const char *src)				\
+{																			\
+	ssize_t ret=0;															\
+	ret = store_cb(src);													\
+	return ret ? ret : -EIO;												\
+}																			\
 struct iio_dpd_attr dpd_attr_##index##_t = {								\
 	.name = #attr,															\
 	.id = index,															\
+	.debug = false,															\
+	.show = &_dpd_dev_attr_##index##_show, 									\
+	.store = &_dpd_dev_attr_##index##_store, 								\
+}
+
+#define IIO_DPD_ADD_DEV_DEBUG_ATTR(attr, show_cb, store_cb, index) 			\
+struct iio_dpd_attr dpd_attr_##index##_t = {								\
+	.name = #attr,															\
+	.id = index,															\
+	.debug = true,															\
 	.show = show_cb, 														\
 	.store = store_cb, 														\
 }
@@ -151,11 +203,11 @@ struct iio_dpd_dev_attr iio_dpd_dev_array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
 	[index] = {																\
 		.id = index,														\
 		.attr_type = type,													\
-		.pElement = (void *)&dpd_attr_##index##_t									\
+		.pElement = (void *)&dpd_attr_##index##_t							\
 	}
 
 #define ADD_DEV_ATTR_ARRAY_ELEMENT_END()									\
-	{0,0,NULL},																	\
+	{0,0,NULL},																\
 }
 
 

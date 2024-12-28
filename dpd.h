@@ -11,6 +11,8 @@ extern "C" {
 
 #define DPD_TMPFS_PATH 	"/mnt"
 #define DPD_DEVICE_PATH "dpd"
+#define DPD_DEVICE_DEBUG_PATH "debug"
+#define DPD_DEVICE_SCAN_PATH "scan_elements"
 
 #ifdef WITH_DPD
 int iio_dpd_open(const struct iio_device *dev, size_t samples_count, bool cyclic);
