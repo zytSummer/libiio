@@ -102,6 +102,9 @@ static int32_t hw_mem_read(uint32_t base, uint32_t offset, uint32_t *data)
   
     *data = *(uint32_t *)((uintptr_t)vir_base + offset);
 
+    if(munmap(vir_base, phy_size) == -1)
+		ret = DPD_HW_MEM_MAP_ERROR;
+
     return ret;
 }
 

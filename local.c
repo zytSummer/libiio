@@ -1055,14 +1055,14 @@ static int local_close(const struct iio_device *dev)
 	char err_str[32];
 	int ret, ret1;
 
-	if (pdata->fd == -1)
-		return -EBADF;
-
 	if (iio_device_is_dpd(dev))
 	{
 		/* dpd operation */
 		return iio_dpd_close(dev);
 	}
+
+	if (pdata->fd == -1)
+		return -EBADF;
 
 	ret = 0;
 	ret1 = 0;

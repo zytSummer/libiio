@@ -20,10 +20,21 @@
 #include <string.h>
 #include <fcntl.h>
 #include <time.h>
+#include <poll.h>
 
 
 #define IIO_DPD_BUF_SIZE 128
 #define IIO_DPD_ORX_BUFFER_DEV 	"axi-adrv9009-rx-obs-hpc"
+
+typedef enum tag_dpd_scan_chan {
+	IIO_DPD_SCAN_CHN_TU_I = 0,
+	IIO_DPD_SCAN_CHN_TU_Q,
+	IIO_DPD_SCAN_CHN_TX_I,
+	IIO_DPD_SCAN_CHN_TX_Q,
+	IIO_DPD_SCAN_CHN_CNT
+}e_dpd_scan_chan;
+
+uint32_t IIO_DPD_SAMPLES_PER_READ = 256;
 
 /* generate the global dpd data */
 DECLARE_IIO_DPD_DATA;
@@ -68,6 +79,8 @@ static ssize_t _dpd_dev_attr_name_show(char *dst);
 static ssize_t _dpd_dev_attr_name_store(const char *src);
 static ssize_t _dpd_dev_attr_version_show(char *dst);
 static ssize_t _dpd_dev_attr_version_store(const char *src);
+static ssize_t _dpd_dev_attr_sf_show(char *dst);
+static ssize_t _dpd_dev_attr_sf_store(const char *src);
 static ssize_t _dpd_dev_dbg_attr_reg_show(char *dst);
 static ssize_t _dpd_dev_dbg_attr_reg_store(const char *src);
 static ssize_t _dpd_dev_attr_en_show(char *dst);
@@ -240,7 +253,7 @@ ADD_CHAN_ATTR_ARRAY_ELEMENT(Tx_q, type, 2),
 ADD_CHAN_ATTR_ARRAY_ELEMENT_END(Tx_q);
 
 
-/* Add the device channels */
+/* Add the device channels, the first four channel should always be the TU & TX data channel */
 IIO_DPD_ADD_DEV_SCAN_CHAN(Tu_i,0, "le:s16/16>>0");
 IIO_DPD_ADD_DEV_SCAN_CHAN(Tu_q,1, "le:s16/16>>0");
 IIO_DPD_ADD_DEV_SCAN_CHAN(Tx_i,2, "le:s16/16>>0");
@@ -264,9 +277,10 @@ IIO_DPD_ADD_DEV_DEFAULT_ATTR(iterCount,17);
 IIO_DPD_ADD_DEV_DEFAULT_ATTR(direct,18);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(name, _dpd_dev_attr_name_show, _dpd_dev_attr_name_store, 19);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(version, _dpd_dev_attr_version_show, _dpd_dev_attr_version_store, 20);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(sampling_frequency, _dpd_dev_attr_sf_show, _dpd_dev_attr_sf_store, 21);
 /* the attribute reg is a debug reg*/
-IIO_DPD_ADD_DEV_DEBUG_ATTR(direct_reg_access, _dpd_dev_dbg_attr_reg_show, _dpd_dev_dbg_attr_reg_store, 21);
-IIO_DPD_ADD_DEV_UNIQUE_ATTR(enable, _dpd_dev_attr_en_show, _dpd_dev_attr_en_store, 22);
+IIO_DPD_ADD_DEV_DEBUG_ATTR(direct_reg_access, _dpd_dev_dbg_attr_reg_show, _dpd_dev_dbg_attr_reg_store, 22);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(enable, _dpd_dev_attr_en_show, _dpd_dev_attr_en_store, 23);
 
 ADD_DEV_ATTR_ARRAY_ELEMENT_START()
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_CHAN, Tu_i,0),
@@ -290,8 +304,9 @@ ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, iterCount, 17),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, direct, 18),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, name, 19),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, version, 20),
-ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, direct_reg_access, 21),
-ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR,enable, 22),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, sampling_frequency, 21),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, direct_reg_access, 22),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR,enable, 23),
 ADD_DEV_ATTR_ARRAY_ELEMENT_END();
 
 
@@ -813,6 +828,47 @@ static ssize_t _dpd_dev_attr_name_store(const char *src)
 	return ret ? ret : -EIO;
 }
 
+static ssize_t _dpd_dev_attr_sf_show(char *dst)
+{
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	FILE *f;
+	ssize_t ret = 0;
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "sampling_frequency");
+	
+	f = fopen(file_path, "re");
+	if (!f)
+		return -EIO;
+
+	ret = fread(dst, 1, IIO_DPD_ATTR_LEN, f);
+	fclose(f);
+	if (ret > 0) 
+	{
+		dst[ret] = '\0';
+	}
+	else
+		dst[0] = '\0';
+	return ret ? ret : -EIO;
+}
+
+static ssize_t _dpd_dev_attr_sf_store(const char *src)
+{
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	char *buf;
+	FILE *f;
+	ssize_t ret = 0;
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "sampling_frequency");
+	
+	f = fopen(file_path, "we");
+	if (!f)
+		return -EIO;
+	buf = iio_strdup(src);
+	ret = fwrite(buf, 1, strlen(buf)+1, f);
+	fclose(f);
+	return ret ? ret : -EIO;
+}
+
 static int _dpd_dev_create_fs(void)
 {
 	int ret;
@@ -1024,6 +1080,7 @@ static int _dpd_dev_attribut_init(void)
 	}
 
 	_dpd_dev_attr_name_store("dpd");
+	_dpd_dev_attr_sf_store("122880000");
 	_dpd_scan_attr_init();
 	dpd_device_data.pdev_attr = iio_dpd_dev_array;
 	dpd_device_data.dev_attr_cnt = lp;
@@ -1386,16 +1443,11 @@ out:
 int iio_dpd_device_post_init(struct iio_device *dev)
 {
 	int ret = 0;
-	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dev->pdata);
 
 	if (dev)
 		dev->userdata = (void *) &dpd_device_data;
 	else
 		ret = -EFAULT;
-	
-	/* set the file handler of dpd "device" every time it inits 
-	 * so that the close function can be called when release the context */
-	pdata->fd = 1;
 
 	return ret;
 }
@@ -1406,6 +1458,13 @@ int iio_dpd_open(const struct iio_device *dev,
 		size_t samples_count, bool cyclic)
 {
 	int ret = 0;
+	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dev->pdata);
+
+	
+	/* set the file handler of dpd "device" every time it inits 
+	 * so that the close function can be called when release the context */
+	pdata->fd = 0xFF;
+
 	return ret;
 }
 
@@ -1468,7 +1527,7 @@ int iio_dpd_get_trigger(const struct iio_device *dev,
 	}
 	return -ENXIO;
 	#endif 
-	return 0;
+	return -ENXIO;
 }
 
 int iio_dpd_set_trigger(const struct iio_device *dev,
@@ -1492,11 +1551,31 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 		void *dst, size_t len, uint32_t *mask, size_t words)
 {
 	ssize_t ret = 0;
-#if 0
+	unsigned int i, j, nb_channels;
 	struct iio_dpd_device_data *pdata = dev->pdata;
+	unsigned int buffer_size = IIO_DPD_SAMPLES_PER_READ;
+	unsigned int nb_active_channels = 0;
 	uintptr_t ptr = (uintptr_t) dst;
+	bool tu_cap = false;
+	bool tu_i_cap = false;
+	bool tu_q_cap = false;
+	bool tx_cap = false;
+	bool tx_i_cap = false;
+	bool tx_q_cap = false;
+	uint32_t *tu_cap_buf=NULL;
+	uint16_t *tu_i_cap_buf=NULL;
+	uint16_t *tu_q_cap_buf=NULL;
+	uint32_t *tx_cap_buf=NULL;
+	uint16_t *tx_i_cap_buf=NULL;
+	uint16_t *tx_q_cap_buf=NULL;
+
+
 	struct timespec start;
 	ssize_t readsize;
+	ssize_t sample_size;
+	struct iio_buffer *buffer;
+	struct iio_device *obs;
+
 	if (pdata->fd == -1)
 		return -EBADF;
 	if (words != dev->words)
@@ -1507,36 +1586,184 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 	if (len == 0)
 		return 0;
 
+	/* trigger the data capture of the obs channel so that the data capture of TX and TU can be triggered */
+	obs = iio_context_find_device(dev->ctx, IIO_DPD_ORX_BUFFER_DEV);
+	if (!obs) {
+		IIO_ERROR("No obs device found.\n");
+		return -ENOENT;
+	}
+
+	nb_channels = iio_device_get_channels_count(obs);
+	if (!nb_channels) {
+		IIO_ERROR("No channels found from obs.\n");
+		return -ENOENT;
+	}
+
+	/* Enable all channels of obs */
+	for (i = 0; i < nb_channels; i++) {
+		struct iio_channel *ch = iio_device_get_channel(obs, i);
+		if (!iio_channel_is_output(ch)) {
+			iio_channel_enable(ch);
+			nb_active_channels++;
+		}
+	}
+
+	if (!nb_active_channels) {
+		IIO_ERROR("No input channels found.\n");
+		return -ENOENT;
+	}
+
+	sample_size = iio_device_get_sample_size(obs);
+	/* Zero isn't normally an error code, but in this case it is an error */
+	if (sample_size == 0) {
+		IIO_ERROR("Unable to get sample size from obs device, returned\n");
+		return -EFAULT;
+	} else if (sample_size < 0) {
+		char buf[256];
+		iio_strerror(errno, buf, sizeof(buf));
+		IIO_ERROR("Unable to get sample size from obs device: %s\n", buf);
+		return -EFAULT;
+	}
+
+	buffer = iio_device_create_buffer(obs, buffer_size, false);
+	if (!buffer) {
+		char buf[256];
+		iio_strerror(errno, buf, sizeof(buf));
+		IIO_ERROR("Unable to allocate buffer from obs device: %s\n", buf);
+		return EXIT_FAILURE;
+	}
+
 	clock_gettime(CLOCK_MONOTONIC, &start);
 
-	while (len > 0) {
-		ret = device_check_ready(dev, POLLIN, &start);
-		if (ret < 0)
-			break;
+	ret = iio_buffer_refill(buffer);
+	if (ret < 0) {
+		char buf[256];
+		iio_strerror(-(int)ret, buf, sizeof(buf));
+		IIO_ERROR("Obs data capture is busy!: %s\n", buf);
+		/* trigger ORX capture failed, return error directly */
+		return ret;
+	}
 
-		do {
-			ret = read(pdata->fd, (void *) ptr, len);
-		} while (ret == -1 && errno == EINTR);
+	iio_buffer_destroy(buffer);
 
-		if (ret == -1) {
-			if (pdata->blocking && errno == EAGAIN)
-				continue;
-			ret = -errno;
-			break;
-		} else if (ret == 0) {
-			ret = -EIO;
-			break;
+	/* start to read the data from DPD capture buffer */
+	sample_size = iio_device_get_sample_size(dev);
+	/* Zero isn't normally an error code, but in this case it is an error */
+	if (sample_size == 0) {
+		IIO_ERROR("Unable to get sample size from dpd device, returned\n");
+		return -EFAULT;
+	} else if (sample_size < 0) {
+		char buf[256];
+		iio_strerror(errno, buf, sizeof(buf));
+		IIO_ERROR("Unable to get sample size from dpd device: %s\n", buf);
+		return -EFAULT;
+	}
+
+	buffer_size = len / sample_size;
+	if (buffer_size > 2 * DPD_CAP_SIZE) {
+		IIO_ERROR("capture data length beyond the capture buffer limitation, returned\n");
+		return -EINVAL;
+	}
+
+	nb_active_channels = 0;
+
+	if (TEST_BIT(mask, IIO_DPD_SCAN_CHN_TU_I)) {
+		nb_active_channels ++;
+		tu_i_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tu_i_cap = true;
+	}	
+	if (TEST_BIT(mask, IIO_DPD_SCAN_CHN_TU_Q)) {
+		nb_active_channels ++;
+		tu_q_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tu_q_cap = true;
+	}
+	if (tu_i_cap || tu_q_cap) {
+		tu_cap = true;
+		tu_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+	}
+		
+	if (TEST_BIT(mask, IIO_DPD_SCAN_CHN_TX_I)) {
+		nb_active_channels ++;
+		tx_i_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tx_i_cap = true;
+	}	
+	if (TEST_BIT(mask, IIO_DPD_SCAN_CHN_TX_Q)) {
+		nb_active_channels ++;
+		tx_q_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tx_q_cap = true;
+	}
+	if (tx_i_cap || tx_q_cap) {
+		tx_cap = true;
+		tx_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+		ret = dpd_read_capture_buffer(1, tx_cap_buf, DPD_CAP_SIZE);
+	}
+
+	if (tu_cap)
+		ret = dpd_read_capture_buffer(0, tu_cap_buf, DPD_CAP_SIZE);
+
+
+	if (tx_cap)
+		ret = dpd_read_capture_buffer(1, tx_cap_buf, DPD_CAP_SIZE);
+
+	for (i = 0; i < buffer_size; i += 2) {
+		if (tu_cap) {
+			if (tu_i_cap)
+				tu_i_cap_buf[i] = (tu_cap_buf[i] >> 0) & 0xffff;
+			if (tu_q_cap)
+				tu_q_cap_buf[i] = (tu_cap_buf[i+1] >> 0) & 0xffff;
+		}
+		if (tx_cap) {
+			if (tx_i_cap)
+				tx_i_cap_buf[i] = (tx_cap_buf[i] >> 0) & 0xffff;
+			if (tx_q_cap)
+				tx_q_cap_buf[i] = (tx_cap_buf[i+1] >> 0) & 0xffff;
+		}
+	}
+
+	for (i = 0; i < len; i += sample_size) {
+		if (tu_i_cap) {
+			memcpy(ptr, (void *)(tu_i_cap_buf + i / sample_size), 2);
+			ptr += 2;
+		}
+			
+		if (tu_q_cap) {
+			memcpy(ptr, (void *)(tu_q_cap_buf + i / sample_size), 2);
+			ptr += 2;
 		}
 
-		ptr += ret;
-		len -= ret;
+		if (tx_i_cap) {
+			memcpy(ptr, (void *)(tx_i_cap_buf + i / sample_size), 2);
+			ptr += 2;
+		}
+			
+		if (tx_q_cap) {
+			memcpy(ptr, (void *)(tx_q_cap_buf + i / sample_size), 2);
+			ptr += 2;
+		}
 	}
 
 	readsize = (ssize_t)(ptr - (uintptr_t) dst);
-	if ((ret > 0 || ret == -EAGAIN) && (readsize > 0))
+
+	if (tu_cap) {
+		if (tu_i_cap)
+			free(tu_i_cap_buf);
+		if (tu_q_cap)
+			free(tu_q_cap_buf);
+
+		free(tu_cap_buf);
+	}
+	if (tx_cap) {
+		if (tx_i_cap)
+			free(tx_i_cap_buf);
+		if (tx_q_cap)
+			free(tx_q_cap_buf);
+
+		free(tx_cap_buf);
+	}
+
+	if ((ret >= 0 || ret == -EAGAIN) && (readsize > 0))
 		return readsize;
 	else
-	#endif
 		return ret;
 }
 
