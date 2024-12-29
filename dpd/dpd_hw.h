@@ -29,4 +29,6 @@ uint32_t dpd_read_cap_control_reg(int8_t position);
 
 uint32_t dpd_hw_open(void);
 uint32_t dpd_hw_close(void);
+
+uint32_t *dpd_hw_get_luts_entry(void);
 #endif

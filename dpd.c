@@ -21,7 +21,8 @@
 #include <fcntl.h>
 #include <time.h>
 #include <poll.h>
-
+#include <complex.h>
+#include <unistd.h>
 
 #define IIO_DPD_BUF_SIZE 128
 #define IIO_DPD_ORX_BUFFER_DEV 	"axi-adrv9009-rx-obs-hpc"
@@ -39,6 +40,7 @@ uint32_t IIO_DPD_SAMPLES_PER_READ = 256;
 /* generate the global dpd data */
 DECLARE_IIO_DPD_DATA;
 
+static struct iio_device *_dpd_get_local_dev(void);
 
 static ssize_t _dpd_Tu_i_en_show(char *dst);
 static ssize_t _dpd_Tu_i_en_store(const char *src);
@@ -314,6 +316,7 @@ struct iio_dpd_device_data {
 	int fd;		/* don't move the position of this element!! */
 	struct iio_dpd_dev_attr *pdev_attr;
 	uint32_t dev_attr_cnt;
+	struct iio_device *dpd_dev;
 };
 
 static struct iio_dpd_device_data dpd_device_data;
@@ -620,6 +623,7 @@ static ssize_t _dpd_dev_attr_en_store(const char *src)
 	char *end;
 	FILE *f;
 	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	struct iio_device *dpd = NULL;
 
 	str_tmp = iio_strdup(src);
 	for (argc = 0; argc < 2; argc ++)
@@ -643,14 +647,19 @@ static ssize_t _dpd_dev_attr_en_store(const char *src)
 	fwrite(var[0], 1, strlen(var[0]), f);
 	fclose(f);
 
+	dpd = _dpd_get_local_dev();
+
+	if (!dpd) {
+		return -ENOENT;
+	}
+
 	if (argc == 1) 
 	{
-		ret = strlen(src);
+		_dpd_tracking_entry(dpd, val[0]);
 	}
 	else if (argc == 2) 
 	{
-		dpd_hw_mem_write(val[0], val[1]);
-		ret = strlen(src);
+		/* keep it here for the extension */
 	}
 	else
 	{
@@ -1195,6 +1204,20 @@ static const char * _dpd_get_filename(const struct iio_channel *chn,
 	return attr;
 }
 
+static void _dpd_usleep(uint32_t micro_seconds)
+{
+#ifdef _WIN32
+		Sleep(micro_seconds);
+#else
+		usleep(micro_seconds);
+#endif
+}
+
+static struct iio_device *_dpd_get_local_dev(void)
+{
+	return dpd_device_data.dpd_dev;
+}
+
 struct iio_device *_dpd_get_obs_dev(struct iio_device *dpd)
 {
 	if (!dpd)
@@ -1209,17 +1232,54 @@ struct iio_device *_dpd_get_obs_dev(struct iio_device *dpd)
 int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 {
 	int dpdErr = 0;
-	#if 0
+	#if 1
+	int ret = 0;
 	ssize_t sample_size;
+	uint8_t *wr_data_buf = NULL;
+	uint32_t *tu_cap_buf=NULL;
+	uint32_t *tx_cap_buf=NULL;
+	double complex *pTx=NULL;
+	double complex *pORx=NULL;
+	uint32_t i, nb_channels;
+	uint32_t buffer_size;
+	uint32_t nb_active_channels = 0;
 	struct iio_buffer *buffer;
 	struct iio_device *obs;
+	uint32_t *lut_entries = dpd_hw_get_luts_entry();
 
 	/* 1.bypass actuator */
 	dpd_register_write(ADDR_ACT_OUT_SEL, DPD_BYPASS);
 
 	/* 2.dpd init */
 	/* Has been done in device initialization process */
-	// dpdErr = dpd_Init(&dpdData);
+	dpdErr = dpd_Init(&dpdData);
+
+	/* 3.find the obs iio device and enable all the channels */
+	obs = iio_context_find_device(dev->ctx, IIO_DPD_ORX_BUFFER_DEV);
+	if (!obs) {
+		IIO_ERROR("No obs device found.\n");
+		return -ENOENT;
+	}
+
+	nb_channels = iio_device_get_channels_count(obs);
+	if (!nb_channels) {
+		IIO_ERROR("No channels found from obs.\n");
+		return -ENOENT;
+	}
+
+	/* Enable all channels of obs */
+	for (i = 0; i < nb_channels; i++) {
+		struct iio_channel *ch = iio_device_get_channel(obs, i);
+		if (!iio_channel_is_output(ch)) {
+			iio_channel_enable(ch);
+			nb_active_channels++;
+		}
+	}
+
+	if (!nb_active_channels) {
+		IIO_ERROR("No input channels found.\n");
+		return -ENOENT;
+	}
 
 	for(uint8_t iters = 0u; iters < iter_cnt; iters++)
 	{
@@ -1238,49 +1298,54 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		/* 3.capture */
 		if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 		{
-			obs = iio_context_find_device(dev->ctx, IIO_DPD_ORX_BUFFER_DEV);
 			sample_size = iio_device_get_sample_size(obs);
 			/* Zero isn't normally an error code, but in this case it is an error */
 			if (sample_size == 0) {
-				IIO_ERROR("Unable to get sample size, returned 0\n");
+				IIO_ERROR("Unable to get sample size from obs device, returned\n");
 				return -EFAULT;
 			} else if (sample_size < 0) {
 				char buf[256];
 				iio_strerror(errno, buf, sizeof(buf));
-				IIO_ERROR("Unable to get sample size : %s\n", buf);
+				IIO_ERROR("Unable to get sample size from obs device: %s\n", buf);
 				return -EFAULT;
 			}
 
-			buffer = iio_device_create_buffer(dev, buffer_size, false);
+			buffer_size = DPD_CAP_SIZE * sample_size;
+			buffer = iio_device_create_buffer(obs, buffer_size, false);
 			if (!buffer) {
 				char buf[256];
 				iio_strerror(errno, buf, sizeof(buf));
-				IIO_ERROR("Unable to allocate buffer: %s\n", buf);
+				IIO_ERROR("Unable to allocate buffer from obs device: %s\n", buf);
 				return EXIT_FAILURE;
 			}
-			transfer_rx.size = DPD_CAP_SIZE * TALISE_NUM_CHANNELS / 2 *
-								NO_OS_DIV_ROUND_UP(talInit.jesd204Settings.framerA.Np, 8);
 
-			/* Read the data from the ADC DMA. */
-			axi_dmac_transfer_start(rx_os_dmac, &transfer_rx);
-
-			/* Wait until transfer finishes */
-			int32_t status = axi_dmac_transfer_wait_completion(rx_os_dmac, 500);
-
-			/* Flush cache data. */
-			Xil_DCacheInvalidateRange((uintptr_t)ADC_DDR_BASEADDR,
-					DPD_CAP_SIZE * TALISE_NUM_CHANNELS / 2 *
-						NO_OS_DIV_ROUND_UP(talInit.jesd204Settings.framerA.Np, 8));
-
-			if(status < 0)
-			{
+			ret = iio_buffer_refill(buffer);
+			if (ret < 0) {
+				char buf[256];
+				iio_strerror(-(int)ret, buf, sizeof(buf));
+				IIO_ERROR("Obs data capture is busy!: %s\n", buf);
+				/* trigger ORX capture failed, return error directly */
 				dpdErr = DPD_CAPTURE_ORX_ERROR;
+				break;
 			}
 			else
 			{
-				memcpy(wr_data, (uint8_t*)ADC_DDR_BASEADDR, DPD_CAP_SIZE*4); // ORx
-				dpdErr = dpd_read_capture_buffer(0, capTuBuf, DPD_CAP_SIZE);
-				dpdErr = dpd_read_capture_buffer(1, capTxBuf, DPD_CAP_SIZE);
+				/* confirm Obs data */
+				wr_data_buf = malloc(buffer_size*sizeof(uint8_t));
+				void *start = iio_buffer_start(buffer);
+				size_t read_len = (intptr_t) iio_buffer_end(buffer)	- (intptr_t) start;
+
+				if (read_len != buffer_size) {
+					IIO_ERROR("Data from obs is not enough, expected data len = %d, actual len = %d\n", buffer_size, read_len);
+					dpdErr = DPD_CAPTURE_ORX_ERROR;
+					break;
+				}
+				/* capture the TU and TX data */
+				tu_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+				tx_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+				dpdErr = dpd_read_capture_buffer(0, tu_cap_buf, DPD_CAP_SIZE);
+				dpdErr = dpd_read_capture_buffer(1, tx_cap_buf, DPD_CAP_SIZE);
+
 			}
 		}
 
@@ -1299,21 +1364,24 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				dpdData.direct = 0;
 			}
 
+			pTx = malloc(DPD_CAP_SIZE * sizeof(double complex));
+			pORx = malloc(DPD_CAP_SIZE * sizeof(double complex));
+
 			/* convert int32_t to double complex for Tx */
 			for(uint16_t index = 0; index < DPD_CAP_SIZE; index=index+2)
 			{
 				if(dpdData.direct)
 				{
-					data_i = (capTuBuf[index] >> 0) & 0xffff;
-					data_q = (capTuBuf[index+1]>> 0) & 0xffff;
+					data_i = (tu_cap_buf[index] >> 0) & 0xffff;
+					data_q = (tu_cap_buf[index+1]>> 0) & 0xffff;
 
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
 
 					pTx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 
-					data_i = (capTuBuf[index] >> 16) & 0xffff;
-					data_q = (capTuBuf[index+1]>> 16) & 0xffff;
+					data_i = (tu_cap_buf[index] >> 16) & 0xffff;
+					data_q = (tu_cap_buf[index+1]>> 16) & 0xffff;
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
 
@@ -1321,16 +1389,16 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				}
 				else
 				{
-					data_i = (capTxBuf[index] >> 0) & 0xffff;
-					data_q = (capTxBuf[index+1]>> 0) & 0xffff;
+					data_i = (tx_cap_buf[index] >> 0) & 0xffff;
+					data_q = (tx_cap_buf[index+1]>> 0) & 0xffff;
 
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
 
 					pTx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 
-					data_i = (capTxBuf[index] >> 16) & 0xffff;
-					data_q = (capTxBuf[index+1]>> 16) & 0xffff;
+					data_i = (tx_cap_buf[index] >> 16) & 0xffff;
+					data_q = (tx_cap_buf[index+1]>> 16) & 0xffff;
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
 
@@ -1338,12 +1406,16 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				}
 			}
 
+			free(tu_cap_buf);
+			free(tx_cap_buf);
+
 			/* convert int32_t to double complex for ORx */
 			for(uint16_t index = 0; index < DPD_CAP_SIZE; index++)
 			{
 				// ORx
-				data_i = (wr_data[index*4 + 0] << 0) | (wr_data[index*4 + 1] << 8);
-				data_q = (wr_data[index*4 + 2] << 0) | (wr_data[index*4 + 3] << 8);
+				uint8_t *obs_buf = (uint8_t *)iio_buffer_start(buffer);
+				data_i = (obs_buf[index*4 + 0] << 0) | (obs_buf[index*4 + 1] << 8);
+				data_q = (obs_buf[index*4 + 2] << 0) | (obs_buf[index*4 + 3] << 8);
 #if 0
 				tmp_i = (data_i > 32768-1) ? (data_i-65536) : data_i;
 				tmp_q = (data_q > 32768-1) ? (data_q-65536) : data_q;
@@ -1353,6 +1425,8 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 #endif
 				pORx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 			}
+			/* release obs buffer */
+			iio_buffer_destroy(buffer);
 
 			/* run dpd coeffs estimation */
 			uint8_t capBatch = 1;
@@ -1363,6 +1437,8 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 										capBatch
 										);
 		}
+		free(pTx);
+		free(pORx);
 
 		/* 5.coeffs2luts */
 		uint32_t lutScale = 32738; // 2^15
@@ -1371,7 +1447,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 			{
 				dpdErr = WriteVBankLuts(&dpdData,
-										lutEntries,
+										lut_entries,
 										lutId,
 										lutScale,
 										DPD_LUT_DEPTH);
@@ -1390,8 +1466,8 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		{
 			for(uint8_t lutId = 0u; lutId < DPD_LUT_MAX; lutId++)
 			{
-				dpd_luts_write(lutId, &lutEntries[lutId*DPD_LUT_DEPTH]);
-				no_os_mdelay(1);
+				dpd_luts_write(lutId, lut_entries+ lutId*DPD_LUT_DEPTH);
+				_dpd_usleep(1000);
 			}
 		}
 
@@ -1406,7 +1482,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		{
 			break;
 		}
-		no_os_mdelay(100);
+		_dpd_usleep(100*1000);
 	}
 	#endif
 	return dpdErr;
@@ -1444,8 +1520,10 @@ int iio_dpd_device_post_init(struct iio_device *dev)
 {
 	int ret = 0;
 
-	if (dev)
+	if (dev) {
+		dpd_device_data.dpd_dev = dev;
 		dev->userdata = (void *) &dpd_device_data;
+	}
 	else
 		ret = -EFAULT;
 
@@ -1504,7 +1582,7 @@ int iio_dpd_get_trigger(const struct iio_device *dev,
 {
 	#if 0
 	char buf[1024];
-	unsigned int i;
+	uint32_t i;
 	ssize_t nb = iio_dpd_read_dev_attr(dev, "trigger/current_trigger",
 			buf, sizeof(buf), false);
 	if (nb < 0) {
@@ -1551,10 +1629,10 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 		void *dst, size_t len, uint32_t *mask, size_t words)
 {
 	ssize_t ret = 0;
-	unsigned int i, j, nb_channels;
-	struct iio_dpd_device_data *pdata = dev->pdata;
-	unsigned int buffer_size = IIO_DPD_SAMPLES_PER_READ;
-	unsigned int nb_active_channels = 0;
+	uint32_t i, nb_channels;
+	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dev->pdata);
+	uint32_t buffer_size = IIO_DPD_SAMPLES_PER_READ;
+	uint32_t nb_active_channels = 0;
 	uintptr_t ptr = (uintptr_t) dst;
 	bool tu_cap = false;
 	bool tu_i_cap = false;
@@ -1828,72 +1906,6 @@ ssize_t iio_dpd_get_buffer(const struct iio_device *dev,
 		uint32_t *mask, size_t words)
 {
 	ssize_t ret = -ENOSYS;
-	#if 0
-	struct block block;
-	struct iio_dpd_device_data *pdata = dev->pdata;
-	struct timespec start;
-	char err_str[1024];
-	int f = pdata->fd;
-
-
-	if (!WITH_LOCAL_MMAP_API || !pdata->is_high_speed)
-		return -ENOSYS;
-	if (f == -1)
-		return -EBADF;
-	if (!addr_ptr)
-		return -EINVAL;
-
-	if (pdata->last_dequeued >= 0) {
-		struct block *last_block = &pdata->blocks[pdata->last_dequeued];
-
-		if (pdata->cyclic) {
-			if (pdata->cyclic_buffer_enqueued)
-				return -EBUSY;
-			pdata->blocks[0].flags |= BLOCK_FLAG_CYCLIC;
-			pdata->cyclic_buffer_enqueued = true;
-		}
-
-		last_block->bytes_used = bytes_used;
-		ret = (ssize_t) ioctl_nointr(f,
-				BLOCK_ENQUEUE_IOCTL, last_block);
-		if (ret) {
-			iio_strerror(-ret, err_str, sizeof(err_str));
-			IIO_ERROR("Unable to enqueue block: %s\n", err_str);
-			return ret;
-		}
-
-		if (pdata->cyclic) {
-			*addr_ptr = pdata->addrs[pdata->last_dequeued];
-			return (ssize_t) last_block->bytes_used;
-		}
-
-		pdata->last_dequeued = -1;
-	}
-
-	clock_gettime(CLOCK_MONOTONIC, &start);
-
-	do {
-		ret = (ssize_t) device_check_ready(dev, POLLIN | POLLOUT, &start);
-		if (ret < 0)
-			return ret;
-
-		memset(&block, 0, sizeof(block));
-		ret = (ssize_t) ioctl_nointr(f, BLOCK_DEQUEUE_IOCTL, &block);
-	} while (pdata->blocking && ret == -EAGAIN);
-
-	if (ret) {
-		if ((!pdata->blocking && ret != -EAGAIN) ||
-				(pdata->blocking && ret != -ETIMEDOUT)) {
-			iio_strerror(-ret, err_str, sizeof(err_str));
-			IIO_ERROR("Unable to dequeue block: %s\n", err_str);
-		}
-		return ret;
-	}
-
-	pdata->last_dequeued = block.id;
-	*addr_ptr = pdata->addrs[block.id];
-	return (ssize_t) block.bytes_used;
-	#endif
 	return ret;
 }
 
