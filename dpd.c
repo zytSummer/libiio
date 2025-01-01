@@ -1785,16 +1785,24 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 
 	for (i = 0; i < buffer_size; i += 2) {
 		if (tu_cap) {
-			if (tu_i_cap)
+			if (tu_i_cap) {
 				tu_i_cap_buf[i] = (tu_cap_buf[i] >> 0) & 0xffff;
-			if (tu_q_cap)
+				tu_i_cap_buf[i+1] = (tu_cap_buf[i] >> 16) & 0xffff;
+			}
+			if (tu_q_cap){
 				tu_q_cap_buf[i] = (tu_cap_buf[i+1] >> 0) & 0xffff;
+				tu_q_cap_buf[i+1] = (tu_cap_buf[i+1] >> 16) & 0xffff;
+			}
 		}
 		if (tx_cap) {
-			if (tx_i_cap)
+			if (tx_i_cap) {
 				tx_i_cap_buf[i] = (tx_cap_buf[i] >> 0) & 0xffff;
-			if (tx_q_cap)
+				tx_i_cap_buf[i+1] = (tx_cap_buf[i] >> 16) & 0xffff;
+			}
+			if (tx_q_cap){
 				tx_q_cap_buf[i] = (tx_cap_buf[i+1] >> 0) & 0xffff;
+				tx_q_cap_buf[i+1] = (tx_cap_buf[i+1] >> 16) & 0xffff;
+			}
 		}
 	}
 
