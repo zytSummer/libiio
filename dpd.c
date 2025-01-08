@@ -29,7 +29,7 @@
 #define IIO_DPD_LINE_BUFFER_SIZE 128
 #define IIO_DPD_SAMPLE_BYTE_SIZE 32768
 #define IIO_DPD_ORX_BUFFER_DEV 	"axi-adrv9009-rx-obs-hpc"
-#define IIO_DPD_WAVE_FORM_FILE 	"/root/TE20_245P76_N11BackOff_32k.txt"
+#define IIO_DPD_WAVE_FORM_FILE 	"/root/LTE20_122P88_N11BackOff_32k.txt"
 
 typedef enum tag_dpd_scan_chan {
 	IIO_DPD_IN_SCAN_CHN_TU_I = 0,
@@ -1625,7 +1625,7 @@ int _dpd_load_waveform(char *wave_file, uint8_t *data)
 		return -EINVAL;
 
 	fp = fopen(wave_file, "re");
-	if (fp)
+	if (!fp)
 		return -EBADF;
 	
 	while (fgets(line, sizeof(line), fp) != NULL)
@@ -1633,7 +1633,7 @@ int _dpd_load_waveform(char *wave_file, uint8_t *data)
 		char *str_tmp = NULL;
 		char *rest = NULL;
 
-		str_tmp = iio_strtok_r(line, " ", &rest); 
+		str_tmp = iio_strtok_r(line, "\t", &rest); 
 
 		data_i = strtol(str_tmp, &end, 0);
 		data_q = strtol(rest, &end, 0);
@@ -1698,16 +1698,15 @@ int iio_dpd_device_post_init(struct iio_device *dev)
 	iio_dpd_open(dpd_device_data.dpd_dev, 0, 0);
 
 	uint8_t *data = NULL;
-	uint32_t data_len = 0;
 
-	data = malloc(sizeof(uint8_t)*IIO_DPD_SAMPLE_BYTE_SIZE*2);
+	data = malloc(sizeof(uint8_t)*IIO_DPD_SAMPLE_BYTE_SIZE*4);
 	if (!data)
 	{
 		return -EIO;
 	}
-	_dpd_load_waveform(IIO_DPD_WAVE_FORM_FILE, data);
-
-	iio_dpd_write(dpd_device_data.dpd_dev, data, data_len);
+	ret = _dpd_load_waveform(IIO_DPD_WAVE_FORM_FILE, data);
+	if (ret > 0)
+		iio_dpd_write(dpd_device_data.dpd_dev, data, ret);
 
 	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dpd_device_data.dpd_dev->pdata);
 
@@ -1716,6 +1715,7 @@ int iio_dpd_device_post_init(struct iio_device *dev)
 	CLEAR_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_Q);
 
 	free(data);
+	data = NULL;
 #endif
 	return ret;
 }
