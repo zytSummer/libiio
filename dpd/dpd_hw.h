@@ -6,6 +6,8 @@
 int32_t dpd_hw_mem_write(uint32_t addr, uint32_t data);
 int32_t dpd_hw_mem_read(uint32_t addr, uint32_t *data);
 
+uint8_t dpd_download_waveform(uint32_t *waveform_i, uint32_t *waveform_q, uint32_t size);
+
 uint8_t dpd_luts_access_test(void);
 uint32_t dpd_register_write(uint8_t offset, uint32_t value);
 uint32_t dpd_register_read(uint8_t offset);

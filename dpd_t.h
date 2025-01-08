@@ -19,6 +19,14 @@
 #define IIO_DPD_ATTR_NAME_LEN						128
 #define IIO_DPD_ATTR_SCAN_TYPE_LEN					16
 
+
+enum iio_dpd_scan_flg {
+	DPD_NOT_SCAN_ELEMENT = 0,
+	DPD_IS_IN_SCAN_ELEMENT,
+	DPD_IS_OUT_SCAN_ELEMENT,
+	DPD_SCAN_ELEMENT_CNT
+};
+
 struct iio_dpd_attr {
 	char name[IIO_DPD_ATTR_NAME_LEN];		/* don't move the definition position */
 	uint32_t id;							/* don't move the definition position */
@@ -121,15 +129,24 @@ struct iio_dpd_attr *iio_dpd_##chan##_array[IIO_DPD_MAX_CHAN_ATTR_CNT] = {
 struct iio_dpd_channel dpd_attr_##index##_t = {								\
 	.name = #chan,															\
 	.id = index,															\
-	.is_scan = false,														\
+	.is_scan = DPD_NOT_SCAN_ELEMENT,										\
 	.pp_attr_array = iio_dpd_##chan##_array, 								\
 }
 
-#define IIO_DPD_ADD_DEV_SCAN_CHAN(chan, index, type)						\
+#define IIO_DPD_ADD_DEV_IN_SCAN_CHAN(chan, index, type)						\
 struct iio_dpd_channel dpd_attr_##index##_t = {								\
 	.name = #chan,															\
 	.id = index,															\
-	.is_scan = true,														\
+	.is_scan = DPD_IS_IN_SCAN_ELEMENT,										\
+	.scan_type = type,														\
+	.pp_attr_array = iio_dpd_##chan##_array, 								\
+}
+
+#define IIO_DPD_ADD_DEV_OUT_SCAN_CHAN(chan, index, type)					\
+struct iio_dpd_channel dpd_attr_##index##_t = {								\
+	.name = #chan,															\
+	.id = index,															\
+	.is_scan = DPD_IS_OUT_SCAN_ELEMENT,										\
 	.scan_type = type,														\
 	.pp_attr_array = iio_dpd_##chan##_array, 								\
 }
