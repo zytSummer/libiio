@@ -107,6 +107,10 @@ static ssize_t _dpd_dev_dbg_attr_reg_show(char *dst);
 static ssize_t _dpd_dev_dbg_attr_reg_store(const char *src);
 static ssize_t _dpd_dev_attr_en_show(char *dst);
 static ssize_t _dpd_dev_attr_en_store(const char *src);
+static ssize_t _dpd_dev_attr_waveform_show(char *dst);
+static ssize_t _dpd_dev_attr_waveform_store(const char *src);
+
+static int _dpd_load_waveform(char *wave_file, uint8_t *data);
 
 /* create dpd channel TrackCfg attribute */
 IIO_DPD_ADD_CHAN_ATTR(TrackCfg, numFilterCoefficients, 0);
@@ -326,6 +330,8 @@ IIO_DPD_ADD_DEV_UNIQUE_ATTR(sampling_frequency, _dpd_dev_attr_sf_show, _dpd_dev_
 /* the attribute reg is a debug reg*/
 IIO_DPD_ADD_DEV_DEBUG_ATTR(direct_reg_access, _dpd_dev_dbg_attr_reg_show, _dpd_dev_dbg_attr_reg_store, 24);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(enable, _dpd_dev_attr_en_show, _dpd_dev_attr_en_store, 25);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(waveform, _dpd_dev_attr_waveform_show, _dpd_dev_attr_waveform_store, 26);
+
 
 ADD_DEV_ATTR_ARRAY_ELEMENT_START()
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_CHAN, Tu_i,0),
@@ -354,6 +360,7 @@ ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, version, 22),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, sampling_frequency, 23),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, direct_reg_access, 24),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR,enable, 25),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR,waveform, 26),
 ADD_DEV_ATTR_ARRAY_ELEMENT_END();
 
 
@@ -552,65 +559,64 @@ static ssize_t _dpd_Tx_q_type_store(const char *src)
 /* DAC Channel attribute */
 static ssize_t _dpd_dac_i_en_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_i", "en", 2, dst);
+	return __scan_attr_read("out", "dac_i", "en", 4, dst);
 }
 
 static ssize_t _dpd_dac_i_en_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_i", "en", 2, src);
+	return __scan_attr_write("out", "dac_i", "en", 4, src);
 }
 
 static ssize_t _dpd_dac_i_index_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_i", "index", 2, dst);
+	return __scan_attr_read("out", "dac_i", "index", 4, dst);
 }
 
 static ssize_t _dpd_dac_i_index_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_i", "index", 2, src);
+	return __scan_attr_write("out", "dac_i", "index", 4, src);
 }
 
 static ssize_t _dpd_dac_i_type_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_i", "type", 2, dst);
+	return __scan_attr_read("out", "dac_i", "type", 4, dst);
 }
 
 static ssize_t _dpd_dac_i_type_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_i", "type", 2, src);
+	return __scan_attr_write("out", "dac_i", "type", 4, src);
 }
 
 
 static ssize_t _dpd_dac_q_en_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_q", "en", 3, dst);
+	return __scan_attr_read("out", "dac_q", "en", 5, dst);
 }
 
 static ssize_t _dpd_dac_q_en_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_q", "en", 3, src);
+	return __scan_attr_write("out", "dac_q", "en", 5, src);
 }
 
 static ssize_t _dpd_dac_q_index_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_q", "index", 3, dst);
+	return __scan_attr_read("out", "dac_q", "index", 5, dst);
 }
 
 static ssize_t _dpd_dac_q_index_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_q", "index", 3, src);
+	return __scan_attr_write("out", "dac_q", "index", 5, src);
 }
 
 static ssize_t _dpd_dac_q_type_show(char *dst)
 {
-	return __scan_attr_read("out", "dac_q", "type", 3, dst);
+	return __scan_attr_read("out", "dac_q", "type", 5, dst);
 }
 
 static ssize_t _dpd_dac_q_type_store(const char *src)
 {
-	return __scan_attr_write("out", "dac_q", "type", 3, src);
+	return __scan_attr_write("out", "dac_q", "type", 5, src);
 }
-
 
 static ssize_t _dpd_TrackCfg_indirectRegValue_show(char *dst) 
 { 
@@ -776,6 +782,82 @@ static ssize_t _dpd_dev_attr_en_store(const char *src)
 	}
 	
 	return ret;
+}
+
+
+static ssize_t _dpd_dev_attr_waveform_show(char *dst)
+{
+	uint32_t val;
+	uint32_t rd_val;
+	uint32_t tmp_ret;
+	char buf[IIO_DPD_BUF_SIZE] = {0,};
+	char *end;
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	FILE *f;
+	ssize_t ret = 0;
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "waveform");
+	
+	f = fopen(file_path, "re");
+	if (!f)
+		return -EIO;
+
+	ret = fread(buf, 1, sizeof(buf)-1, f);
+
+	if (ret > 0) 
+	{
+		dst[ret] = '\0';
+	}
+	else
+		dst[0] = '\0';
+	
+	fclose(f);
+	return ret ? ret : -EIO;
+}
+
+static ssize_t _dpd_dev_attr_waveform_store(const char *src)
+{
+	ssize_t ret = 0;
+	uint32_t ret_tmp = 0;
+	int argc;
+	FILE *f;
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	struct iio_device *dpd = NULL;
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "waveform");
+	
+	f = fopen(file_path, "we");
+	if (!f)
+		return -EIO;
+
+	ret = fwrite(src, 1, strlen(src), f);
+	fclose(f);
+
+	SET_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_I);
+	SET_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_Q);
+	iio_dpd_open(dpd_device_data.dpd_dev, 0, 0);
+
+	uint8_t *data = NULL;
+
+	data = malloc(sizeof(uint8_t)*IIO_DPD_SAMPLE_BYTE_SIZE*4);
+	if (!data)
+	{
+		return -EIO;
+	}
+	ret_tmp = _dpd_load_waveform(src, data);
+	if (ret_tmp > 0)
+		iio_dpd_write(dpd_device_data.dpd_dev, data, ret_tmp);
+
+	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dpd_device_data.dpd_dev->pdata);
+
+	pdata->fd = -1;
+	CLEAR_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_I);
+	CLEAR_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_Q);
+
+	free(data);
+	data = NULL;
+	
+	return ret_tmp > 0 ? ret : -EIO;
 }
 
 static ssize_t _dpd_dev_dbg_attr_reg_show(char *dst)
@@ -1018,10 +1100,10 @@ static int _dpd_dev_destroy_fs(void)
 {
 	int ret;
 	char cmd[100] = {0,};
-
+#if 0
 	iio_snprintf(cmd, 100, "rm -rf %s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH);
 	ret = system(cmd);
-
+#endif
 	memset(cmd, 0x00, sizeof(cmd));
 	/* mount the tmpfs to the mount point /tmp folder */
 	iio_snprintf(cmd, 100, "umount %s", DPD_TMPFS_PATH);
@@ -1612,7 +1694,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 	return dpdErr;
 }
 
-int _dpd_load_waveform(char *wave_file, uint8_t *data)
+static int _dpd_load_waveform(char *wave_file, uint8_t *data)
 {
 	uint32_t sample_cnt = 0;
 	FILE *fp = NULL;
@@ -1652,7 +1734,7 @@ int _dpd_load_waveform(char *wave_file, uint8_t *data)
 	return 4*sample_cnt;
 }
 
-int iio_dpd_device_pre_init(void)
+int iio_dpd_device_pre_init(uint32_t fast_open)
 {
 	int ret = 0;
 
@@ -1662,18 +1744,21 @@ int iio_dpd_device_pre_init(void)
 		IIO_ERROR("dpd device hardware open failed!\n");
 		goto out;
 	}
-	ret = _dpd_dev_attribut_init();
-	if (ret)
-	{
-		IIO_ERROR("dpd device attribute init failed!\n");
-		goto out;
-	}
 
-	ret = dpd_Init(&dpdData);
-	if (ret)
-	{
-		IIO_ERROR("dpd init failed!\n");
-		goto out;
+	if (!fast_open) {
+		ret = _dpd_dev_attribut_init();
+		if (ret)
+		{
+			IIO_ERROR("dpd device attribute init failed!\n");
+			goto out;
+		}
+
+		ret = dpd_Init(&dpdData);
+		if (ret)
+		{
+			IIO_ERROR("dpd init failed!\n");
+			goto out;
+		}
 	}
 
 out:
@@ -1686,36 +1771,14 @@ int iio_dpd_device_post_init(struct iio_device *dev)
 
 	if (dev) {
 		dpd_device_data.dpd_dev = dev;
-		dev->userdata = (void *) &dpd_device_data;
+		dev->userdata = NULL;
 	}
 	else
 		ret = -EFAULT;
 
 #if DPD_DEBUG_LOAD_WAVEFORM
-	/* debug use, load the waveform file during initialization */
-	SET_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_I);
-	SET_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_Q);
-	iio_dpd_open(dpd_device_data.dpd_dev, 0, 0);
-
-	uint8_t *data = NULL;
-
-	data = malloc(sizeof(uint8_t)*IIO_DPD_SAMPLE_BYTE_SIZE*4);
-	if (!data)
-	{
-		return -EIO;
-	}
-	ret = _dpd_load_waveform(IIO_DPD_WAVE_FORM_FILE, data);
-	if (ret > 0)
-		iio_dpd_write(dpd_device_data.dpd_dev, data, ret);
-
-	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dpd_device_data.dpd_dev->pdata);
-
-	pdata->fd = -1;
-	CLEAR_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_I);
-	CLEAR_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_Q);
-
-	free(data);
-	data = NULL;
+	ret = _dpd_dev_attr_waveform_store(IIO_DPD_WAVE_FORM_FILE);
+	//dpd_download_waveform_default();
 #endif
 	return ret;
 }
@@ -1728,9 +1791,8 @@ int iio_dpd_open(const struct iio_device *dev,
 	int ret = 0;
 	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dev->pdata);
 
+	iio_dpd_device_pre_init(1);
 	
-	/* set the file handler of dpd "device" every time it inits 
-	 * so that the close function can be called when release the context */
 	pdata->fd = 0xFF;
 
 	return ret;
@@ -1739,6 +1801,10 @@ int iio_dpd_open(const struct iio_device *dev,
 int iio_dpd_close(const struct iio_device *dev)
 {
 	int ret = 0;
+	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dev->pdata);
+
+	/* release the file handler every time so that the device open can work normally */
+	pdata->fd = -1;
 
 	ret = dpd_hw_close();
 	if(ret)
@@ -1746,21 +1812,24 @@ int iio_dpd_close(const struct iio_device *dev)
 		IIO_ERROR("Failed to close dpd hardware\n");
 		goto out;
 	}
-
+#if 0	/* It's not a good idea here to keep all the files under the system.
+		 * But the case is that if we released all the files, then we need to 
+		 * create them again during the open operation, which will affect the 
+		 * open speed */
 	ret = _dpd_dev_destroy_fs();
 	if(ret)
 	{
 		IIO_ERROR("Failed to destroy dpd device file system\n");
 		goto out;
 	}
-
+#endif
 out:
 	return ret;
 }
 
 int iio_dpd_get_fd(const struct iio_device *dev)
 {
-	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)dev->userdata;
+	struct iio_dpd_device_data *pdata = &dpd_device_data;
 	if (pdata->fd == -1)
 		return -EBADF;
 	else
@@ -1929,25 +1998,25 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 
 	buffer_size = len / sample_size;
 	if (buffer_size > 2 * DPD_CAP_SIZE) {
-		IIO_ERROR("capture data length beyond the capture buffer limitation, returned\n");
-		return -EINVAL;
+		IIO_WARNING("capture data length beyond the capture buffer limitation, returned\n");
+		buffer_size = 2 * DPD_CAP_SIZE;
 	}
 
 	nb_active_channels = 0;
 
 	if (TEST_BIT(mask, IIO_DPD_IN_SCAN_CHN_TU_I)) {
 		nb_active_channels ++;
-		tu_i_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tu_i_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t)*2);
 		tu_i_cap = true;
 	}	
 	if (TEST_BIT(mask, IIO_DPD_IN_SCAN_CHN_TU_Q)) {
 		nb_active_channels ++;
-		tu_q_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t));
+		tu_q_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint16_t)*2);
 		tu_q_cap = true;
 	}
 	if (tu_i_cap || tu_q_cap) {
 		tu_cap = true;
-		tu_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+		tu_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t)*2);
 	}
 		
 	if (TEST_BIT(mask, IIO_DPD_IN_SCAN_CHN_TX_I)) {
@@ -2082,15 +2151,15 @@ ssize_t iio_dpd_write(const struct iio_device *dev,
 	{
 		for (lp = 0; lp < len; lp +=8)
 		{
-			uint32_t data_i = 	(ptr[lp + 4] << 24) |
-								(ptr[lp + 5] << 16) |
-								(ptr[lp + 0] << 8) |
-								(ptr[lp + 1] << 0);
+			uint32_t data_i = 	(ptr[lp + 4] << 16) |
+								(ptr[lp + 5] << 24) |
+								(ptr[lp + 0] << 0) |
+								(ptr[lp + 1] << 8);
 
-			uint32_t data_q = 	(ptr[lp + 6] << 24) |
-								(ptr[lp + 7] << 16) |
-								(ptr[lp + 2] << 8) |
-								(ptr[lp + 3] << 0);
+			uint32_t data_q = 	(ptr[lp + 6] << 16) |
+								(ptr[lp + 7] << 24) |
+								(ptr[lp + 2] << 0) |
+								(ptr[lp + 3] << 8);
 			
 			dpd_hw_mem_write(DPD_TX_BUFF1_BASEADDR+lp/2, data_q);
 			dpd_hw_mem_write(DPD_TX_BUFF0_BASEADDR+lp/2, data_i);

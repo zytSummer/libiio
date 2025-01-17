@@ -22,7 +22,7 @@ ssize_t iio_dpd_read(const struct iio_device *dev,
 		void *dst, size_t len, uint32_t *mask, size_t words);
 ssize_t iio_dpd_write_chn_attr(const struct iio_channel *chn,
 		const char *attr, const char *src, size_t len);
-int iio_dpd_device_pre_init(void);
+int iio_dpd_device_pre_init(uint32_t fast_open);
 int iio_dpd_device_post_init(struct iio_device *dev);
 ssize_t iio_dpd_read_dev_attr(const struct iio_device *dev,
 		const char *attr, char *dst, size_t len, enum iio_attr_type type);
@@ -46,7 +46,7 @@ inline  ssize_t iio_dpd_read(const struct iio_device *dev,
 		void *dst, size_t len, uint32_t *mask, size_t words) {}
 inline ssize_t iio_dpd_write_chn_attr(const struct iio_channel *chn,
 		const char *attr, const char *src, size_t len) {}
-inline int iio_dpd_device_pre_init(void) {}
+inline int iio_dpd_device_pre_init(uint32_t fast_open) {}
 inline int iio_dpd_device_post_init(const struct iio_device *dev) {}
 inline ssize_t iio_dpd_read_dev_attr(const struct iio_device *dev,
 		const char *attr, char *dst, size_t len, enum iio_attr_type type) {}
