@@ -31,6 +31,11 @@
 #define IIO_DPD_ORX_BUFFER_DEV 	"axi-adrv9009-rx-obs-hpc"
 #define IIO_DPD_WAVE_FORM_FILE 	"/root/LTE20_122P88_N11BackOff_32k.txt"
 
+#define IIO_DPD_DDS0_MODE_CTRL 0x44A04418
+#define IIO_DPD_DDS1_MODE_CTRL 0x44A04458
+
+#define IIO_DPD_DDS_DMA_MODE  0x2
+
 typedef enum tag_dpd_scan_chan {
 	IIO_DPD_IN_SCAN_CHN_TU_I = 0,
 	IIO_DPD_IN_SCAN_CHN_TU_Q,
@@ -690,10 +695,6 @@ static ssize_t _dpd_TrackCfg_absOffset_store(const char *src)
 static ssize_t _dpd_dev_attr_en_show(char *dst)
 {
 	uint32_t val;
-	uint32_t rd_val;
-	uint32_t tmp_ret;
-	char buf[IIO_DPD_BUF_SIZE] = {0,};
-	char *end;
 	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
 	FILE *f;
 	ssize_t ret = 0;
@@ -704,19 +705,7 @@ static ssize_t _dpd_dev_attr_en_show(char *dst)
 	if (!f)
 		return -EIO;
 
-	ret = fread(buf, 1, sizeof(buf)-1, f);
-	val = strtoul(buf, &end, 0);
-	tmp_ret = dpd_hw_mem_read(val, &rd_val);
-	if (!tmp_ret)
-	{
-		memset(buf, 0x00, sizeof(IIO_DPD_BUF_SIZE));
-		ret = iio_snprintf(dst, IIO_DPD_BUF_SIZE, "0x%08x", rd_val);
-	}
-	else
-	{
-		ret = tmp_ret;
-	}
-	fclose(f);
+	ret = fread(dst, 1, IIO_DPD_ATTR_LEN, f);
 
 	if (ret > 0) 
 	{
@@ -759,7 +748,7 @@ static ssize_t _dpd_dev_attr_en_store(const char *src)
 	if (!f)
 		return -EIO;
 
-	fwrite(var[0], 1, strlen(var[0]), f);
+	ret = fwrite(var[0], 1, strlen(var[0]), f);
 	fclose(f);
 
 	dpd = _dpd_get_local_dev();
@@ -802,7 +791,7 @@ static ssize_t _dpd_dev_attr_waveform_show(char *dst)
 	if (!f)
 		return -EIO;
 
-	ret = fread(buf, 1, sizeof(buf)-1, f);
+	ret = fread(dst, 1, IIO_DPD_ATTR_LEN, f);
 
 	if (ret > 0) 
 	{
@@ -818,10 +807,12 @@ static ssize_t _dpd_dev_attr_waveform_show(char *dst)
 static ssize_t _dpd_dev_attr_waveform_store(const char *src)
 {
 	ssize_t ret = 0;
-	uint32_t ret_tmp = 0;
+	int ret_tmp = 0;
 	int argc;
 	FILE *f;
 	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	char *str_tmp = NULL;
+	char *rest = NULL;
 	struct iio_device *dpd = NULL;
 
 	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "waveform");
@@ -830,7 +821,10 @@ static ssize_t _dpd_dev_attr_waveform_store(const char *src)
 	if (!f)
 		return -EIO;
 
-	ret = fwrite(src, 1, strlen(src), f);
+	/* User may enter additional '\n' symbols, which may cause the file open failed */
+	str_tmp = iio_strtok_r(src, "\n", &rest); 
+
+	ret = fwrite(str_tmp, 1, strlen(str_tmp), f);
 	fclose(f);
 
 	SET_BIT(dpd_device_data.dpd_dev->mask,IIO_DPD_OUT_SCAN_CHN_DAC_I);
@@ -847,6 +841,10 @@ static ssize_t _dpd_dev_attr_waveform_store(const char *src)
 	ret_tmp = _dpd_load_waveform(src, data);
 	if (ret_tmp > 0)
 		iio_dpd_write(dpd_device_data.dpd_dev, data, ret_tmp);
+	
+	/* set the TX DAC transmit to DMA mode */
+	dpd_hw_mem_write(IIO_DPD_DDS0_MODE_CTRL, IIO_DPD_DDS_DMA_MODE);
+	dpd_hw_mem_write(IIO_DPD_DDS1_MODE_CTRL, IIO_DPD_DDS_DMA_MODE);
 
 	struct iio_dpd_device_data *pdata = (struct iio_dpd_device_data *)(dpd_device_data.dpd_dev->pdata);
 
@@ -1454,6 +1452,10 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 	struct iio_device *obs;
 	uint32_t *lut_entries = dpd_hw_get_luts_entry();
 
+	/* 0. set the TX DAC transmit to DMA mode */
+	dpd_hw_mem_write(IIO_DPD_DDS0_MODE_CTRL, IIO_DPD_DDS_DMA_MODE);
+	dpd_hw_mem_write(IIO_DPD_DDS1_MODE_CTRL, IIO_DPD_DDS_DMA_MODE);
+
 	/* 1.bypass actuator */
 	dpd_register_write(ADDR_ACT_OUT_SEL, DPD_BYPASS);
 
@@ -1517,7 +1519,8 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				return -EFAULT;
 			}
 
-			buffer_size = DPD_CAP_SIZE * sample_size;
+			//buffer_size = DPD_CAP_SIZE * sample_size;
+			buffer_size = DPD_CAP_SIZE;
 			buffer = iio_device_create_buffer(obs, buffer_size, false);
 			if (!buffer) {
 				char buf[256];
@@ -1541,7 +1544,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				void *start = iio_buffer_start(buffer);
 				size_t read_len = (intptr_t) iio_buffer_end(buffer)	- (intptr_t) start;
 
-				if (read_len != buffer_size) {
+				if (read_len != buffer_size*sample_size) {
 					IIO_ERROR("Data from obs is not enough, expected data len = %ld, actual len = %ld\n", buffer_size, read_len);
 					dpdErr = DPD_CAPTURE_ORX_ERROR;
 					break;
@@ -2127,6 +2130,9 @@ ssize_t iio_dpd_write(const struct iio_device *dev,
 
 	if (len == 0)
 		return 0;
+	
+	if ((int)len < 0)
+		return -EIO;
 
 	clock_gettime(CLOCK_MONOTONIC, &start);
 
