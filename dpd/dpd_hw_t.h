@@ -41,10 +41,10 @@
 
 // DPD ACT Out Select
 typedef enum {
-    DPD_ENABLE      = 0x01u,
-    DPD_BYPASS      = 0x02u,
-    DPD_SHUTDOWN    = 0x04u,
-    DPD_FREEZE      = 0x08u,
+    DPD_HW_ENABLE      = 0x01u,
+    DPD_HW_BYPASS      = 0x02u,
+    DPD_HW_SHUTDOWN    = 0x04u,
+    DPD_HW_FREEZE      = 0x08u,
 }Dpd_ActOut_Sel;
 
 enum dpd_hw_init_e {

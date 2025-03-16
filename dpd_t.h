@@ -158,7 +158,7 @@ static ssize_t _dpd_dev_attr_##index##_show(char *dst)						\
 	ret = iio_snprintf(dst, IIO_DPD_ATTR_LEN, "0x%08x", (uint32_t)(dpdData.attr));	\
 																			\
 	if (ret > 0)															\
-		dst[ret - 1] = '\0';												\
+		dst[ret] = '\0';													\
 	else																	\
 		dst[0] = '\0';														\
 	return ret ? ret : -EIO;												\
