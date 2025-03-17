@@ -138,6 +138,8 @@ static ssize_t _dpd_dev_attr_waveform_show(char *dst);
 static ssize_t _dpd_dev_attr_waveform_store(const char *src);
 static ssize_t _dpd_dev_attr_initcfg_show(char *dst);
 static ssize_t _dpd_dev_attr_initcfg_store(const char *src);
+static ssize_t _dpd_dev_attr_lutload_show(char *dst);
+static ssize_t _dpd_dev_attr_lutload_store(const char *src);
 
 static int _dpd_load_waveform(const char *wave_file, uint8_t *data);
 
@@ -355,6 +357,7 @@ IIO_DPD_ADD_DEV_DEBUG_ATTR(direct_reg_access, _dpd_dev_dbg_attr_reg_show, _dpd_d
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(enable, _dpd_dev_attr_en_show, _dpd_dev_attr_en_store, 25);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(waveform, _dpd_dev_attr_waveform_show, _dpd_dev_attr_waveform_store, 26);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(initcfg, _dpd_dev_attr_initcfg_show, _dpd_dev_attr_initcfg_store, 27);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(lutload, _dpd_dev_attr_lutload_show, _dpd_dev_attr_lutload_store, 28);
 
 ADD_DEV_ATTR_ARRAY_ELEMENT_START()
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_CHAN, Tu_i,0),
@@ -385,6 +388,7 @@ ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, direct_reg_access, 24),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, enable, 25),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, waveform, 26),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, initcfg, 27),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, lutload, 28),
 ADD_DEV_ATTR_ARRAY_ELEMENT_END();
 
 
@@ -934,6 +938,59 @@ static ssize_t _dpd_dev_attr_initcfg_store(const char *src)
 	fclose(f);
  
 	dpd_Init(&dpdData);
+	
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_lutload_show(char *dst)
+{
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	FILE *f;
+	ssize_t ret = 0;
+ 
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "lutload");
+	
+	f = fopen(file_path, "re");
+	if (!f)
+		return -EIO;
+ 
+	ret = fread(dst, 1, IIO_DPD_ATTR_LEN, f);
+ 
+	if (ret > 0) 
+	{
+		dst[ret] = '\0';
+	}
+	else
+		dst[0] = '\0';
+	
+	fclose(f);
+	return ret ? ret : -EIO;
+}
+
+static ssize_t _dpd_dev_attr_lutload_store(const char *src)
+{
+	ssize_t ret = 0;
+	FILE *f;
+	uint32_t lutId;
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	uint32_t *lut_entries = dpd_hw_get_luts_entry();
+ 
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, "lutload");
+	
+	f = fopen(file_path, "we");
+	if (!f)
+		return -EIO;
+ 
+	ret = fwrite(src, 1, strlen(src)+1, f);
+	fclose(f);
+ 
+	for(uint8_t lutId = 0u; lutId < DPD_LUT_MAX; lutId++)
+	{
+		dpd_luts_write(lutId, lut_entries+ lutId*DPD_LUT_DEPTH);
+		_dpd_usleep(1000);
+	}
+
+	dpd_write_act_out_sel(DPD_HW_ENABLE);
 	
 	return ret;
 }
@@ -1622,7 +1679,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				size_t read_len = (intptr_t) iio_buffer_end(buffer)	- (intptr_t) start;
  
 				if (read_len != buffer_size*sample_size) {
-					IIO_ERROR("Data from obs is not enough, expected data len = %d, actual len = %ld\n", buffer_size, read_len);
+					IIO_ERROR("Data from obs is not enough, expected data len = %d, actual len = %d\n", buffer_size, read_len);
 					dpdErr = DPD_CAPTURE_ORX_ERROR;
 					break;
 				}

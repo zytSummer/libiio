@@ -32830,13 +32830,17 @@ static int32_t hw_mem_write(uint32_t base, uint32_t offset, uint32_t data)
     {
         phy_size = DPD_TX_BUFF1_SIZE;
     }
+    else if (base == DPD_DAC_DDS_BASE && offset < DPD_DAC_DDS_SIZE)
+    {
+        phy_size = DPD_DAC_DDS_SIZE;
+    }
     else
     {
         return -1;
     }
 
     vir_base = mmap(NULL, phy_size, PROT_READ | PROT_WRITE, MAP_SHARED, \
-                                    s_g_dpd_hw.mem_fd, base & ~phy_size);
+                                    s_g_dpd_hw.mem_fd, base &  ~(phy_size - 1));
     if (vir_base == (void *) -1)
     {
         printf("ERROR!! memory map failed at physical address 0x%x\n", phy_size);
@@ -32887,13 +32891,17 @@ static int32_t hw_mem_read(uint32_t base, uint32_t offset, uint32_t *data)
     {
         phy_size = DPD_TX_BUFF1_SIZE;
     }
+	else if (base == DPD_DAC_DDS_BASE && offset < DPD_DAC_DDS_SIZE)
+    {
+        phy_size = DPD_DAC_DDS_SIZE;
+    }
     else
     {
         return -1;
     }
 
     vir_base = mmap(NULL, phy_size, PROT_READ | PROT_WRITE, MAP_SHARED, \
-                                    s_g_dpd_hw.mem_fd, base & ~phy_size);
+                                    s_g_dpd_hw.mem_fd, base & base & ~(phy_size-1));
     if (vir_base == (void *) -1)
     {
         printf("ERROR!! memory map failed at physical address 0x%x\n", phy_size);
@@ -32943,6 +32951,11 @@ int32_t dpd_hw_mem_write(uint32_t addr, uint32_t data)
     {
         base = DPD_TX_BUFF1_BASEADDR;
         offset = addr - DPD_TX_BUFF1_BASEADDR;
+    } 
+    else if (addr >= DPD_DAC_DDS_BASE && addr < DPD_DAC_DDS_BASE + DPD_DAC_DDS_SIZE)
+    {
+        base = DPD_DAC_DDS_BASE;
+        offset = addr - DPD_DAC_DDS_BASE;
     }
     else
     {
@@ -32987,8 +33000,13 @@ int32_t dpd_hw_mem_read(uint32_t addr, uint32_t *data)
     } 
     else if (addr >= DPD_TX_BUFF1_BASEADDR && addr < DPD_TX_BUFF1_BASEADDR + DPD_TX_BUFF1_SIZE)
     {
-        base = DPD_TX_BUFF1_SIZE;
+        base = DPD_TX_BUFF1_BASEADDR;
         offset = addr - DPD_TX_BUFF1_BASEADDR;
+    } 
+    else if (addr >= DPD_DAC_DDS_BASE && addr < DPD_DAC_DDS_BASE + DPD_DAC_DDS_SIZE)
+    {
+        base = DPD_DAC_DDS_BASE;
+        offset = addr - DPD_DAC_DDS_BASE;
     }
     else
     {

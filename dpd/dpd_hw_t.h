@@ -12,7 +12,7 @@
 
 // DPD Base Address
 #define DPD_CTRL_BASEADDR       XPAR_AXI_DPD_ACTUATOR_0_BASEADDR
-#define DPD_MEM_BASEADDR        XPAR_AXI_DPD_ACTUATOR_0_BASEADDR + 0x8000
+#define DPD_MEM_BASEADDR        (XPAR_AXI_DPD_ACTUATOR_0_BASEADDR + 0x8000)
 #define DPD_CAP0_BASEADDR       XPAR_AXI_DPD_CAPTURE_0_BASEADDR
 #define DPD_CAP1_BASEADDR       XPAR_AXI_DPD_CAPTURE_1_BASEADDR
 #define DPD_TX_BUFF0_BASEADDR   XPAR_AXI_DPD_TX_BUFF_0_BASEADDR
@@ -28,7 +28,7 @@
 #define DPD_TX_BUFF1_SIZE       0x10000
 
 // DPD physic address device
-#define DPD_HW_PHY_DEV          "/dev/mem"
+#define DPD_HW_PHY_DEV          ("/dev/mem")
 
 // DPD Ctrl Registers
 #define ADDR_IP_VERSION         0x0000
