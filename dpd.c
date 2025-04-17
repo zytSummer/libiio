@@ -27,18 +27,26 @@
 #include <pthread.h>
 #include <sys/types.h>
 
+#define MAX_FILE_SIZE (4*16384)
+
+#define IIO_DAC_BUFFER_SAMPLES MAX_FILE_SIZE/4
+#define IIO_ADC_BUFFER_SAMPLES MAX_FILE_SIZE/4
+
 #define DPD_DEBUG_LOAD_WAVEFORM 1
 #define DPD_DEBUG_TRACKING_THREAD 1
 #define IIO_DPD_BUF_SIZE 128
 #define IIO_DPD_LINE_BUFFER_SIZE 128
 #define IIO_DPD_SAMPLE_BYTE_SIZE 32768
 #define IIO_DPD_ORX_BUFFER_DEV 	"axi-adrv9009-rx-obs-hpc"
+#define IIO_DPD_TRX_PHY_DEV 	"adrv9009-phy"
 #define IIO_DPD_WAVE_FORM_FILE 	"/root/LTE20_122P88_N11BackOff_32k.txt"
 
 #define IIO_DPD_DDS0_MODE_CTRL 0x44A04418
 #define IIO_DPD_DDS1_MODE_CTRL 0x44A04458
 
 #define IIO_DPD_DDS_DMA_MODE  0x2
+
+#define IIO_DPD_CAP_DEBUG	0
 
 typedef enum tag_dpd_scan_chan {
 	IIO_DPD_IN_SCAN_CHN_TU_I = 0,
@@ -896,7 +904,6 @@ static ssize_t _dpd_dev_attr_waveform_store(const char *src)
 	return ret_tmp > 0 ? ret : -EIO;
 }
 
- 
 static ssize_t _dpd_dev_attr_initcfg_show(char *dst)
 {
 	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
@@ -1563,21 +1570,48 @@ uint8_t _dpd_count_bits(uint32_t value)
 	return count;
 }
  
+int _dpd_store_iq_data(char *file_name, uint32_t data_cnt, int16_t *p_data_i, int16_t *p_data_q)
+{
+	uint32_t lp = 0;
+	FILE *fp = NULL;
+
+	if(file_name)
+		fp = fopen(file_name, "w");
+	else
+		IIO_ERROR("NULL input file name!\n");
+
+	if (!fp) {
+		IIO_ERROR("Open file <%s> failed!\n", file_name);
+		return -1;
+	}
+		
+	for (lp = 0; lp < data_cnt; lp ++)
+	{
+		fprintf(fp, "%d\t%d\n", p_data_i[lp], p_data_q[lp]);
+	}
+
+	fclose(fp);
+	IIO_INFO("Successfully saved %d IQ pairs to file<%s>.\n", lp, file_name);
+	return 0;
+}
+
 int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 {
 	int dpdErr = 0;
-	#if 1
 	int ret = 0;
 	ssize_t sample_size;
+	uint32_t *orx_cap_buf=NULL;
 	uint32_t *tu_cap_buf=NULL;
 	uint32_t *tx_cap_buf=NULL;
 	double complex *pTx=NULL;
 	double complex *pORx=NULL;
 	uint32_t i, nb_channels;
-	uint32_t buffer_size;
 	uint32_t nb_active_channels = 0;
 	struct iio_buffer *buffer;
 	struct iio_device *obs;
+	struct iio_device *trx;
+	struct iio_channel *chn1;
+	struct iio_channel *chn2;
 	uint32_t *lut_entries = dpd_hw_get_luts_entry();
  
 	/* 0. set the TX DAC transmit to DMA mode */
@@ -1605,7 +1639,6 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		IIO_ERROR("No channels found from obs.\n");
 		return -ENOENT;
 	}
- 
 	/* Enable all channels of obs */
 	for (i = 0; i < nb_channels; i++) {
 		struct iio_channel *ch = iio_device_get_channel(obs, i);
@@ -1615,14 +1648,22 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		}
 	}
  
-	if (!nb_active_channels) {
-		IIO_ERROR("No input channels found.\n");
-		return -ENOENT;
-	}
+	/* 3.1.find the trx iio device and enable all the channels */
+	trx = iio_context_find_device(dev->ctx, IIO_DPD_TRX_PHY_DEV);
+
+	chn1 = iio_device_find_channel(trx, "voltage2", false);
+	if (chn1)
+		iio_channel_attr_write(chn1, "powerdown", "0");
+	else
+		IIO_WARNING("Can't find TRX ORX0\n");
+	chn2 = iio_device_find_channel(trx, "voltage3", false);
+	if (chn2)
+		iio_channel_attr_write(chn2, "powerdown", "0");
+	else
+		IIO_WARNING("Can't find TRX ORX1\n");
  
 	for(uint8_t iters = 0u; iters < iter_cnt; iters++)
 	{
- #if 0
 		if(dpdData.direct)
 		{
 			/* 1.enable actuator */
@@ -1633,7 +1674,6 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			/* 1.bypass actuator */
 			dpd_register_write(ADDR_ACT_OUT_SEL, DPD_HW_BYPASS);
 		}
- #endif
 		/* tracking loop control */
 		if (!g_t_dpd_tracking_thd.tracking_enable)
 			break;
@@ -1641,6 +1681,8 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		/* 3.capture */
 		if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 		{
+#if !ORX_FROM_FPGA_RAM
+			uint32_t buffer_size;
 			sample_size = iio_device_get_sample_size(obs);
 			/* Zero isn't normally an error code, but in this case it is an error */
 			if (sample_size == 0) {
@@ -1654,7 +1696,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			}
  
 			//buffer_size = DPD_CAP_SIZE * sample_size;
-			buffer_size = DPD_CAP_SIZE;
+			buffer_size = IIO_ADC_BUFFER_SAMPLES/4;
 			buffer = iio_device_create_buffer(obs, buffer_size, false);
 			if (!buffer) {
 				char buf[256];
@@ -1674,6 +1716,7 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			}
 			else
 			{
+
 				/* confirm Obs data */
 				void *start = iio_buffer_start(buffer);
 				size_t read_len = (intptr_t) iio_buffer_end(buffer)	- (intptr_t) start;
@@ -1690,6 +1733,29 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				dpdErr = dpd_read_capture_buffer(1, tx_cap_buf, DPD_CAP_SIZE);
  
 			}
+#else
+			dpd_write_cap_control_reg(0x03u); // trigger 3-captures
+			uint32_t cap_status = 0u;
+			int32_t time_out = 1000;
+			while((cap_status != 0x07) && (time_out >= 0))
+			{
+				cap_status = dpd_read_cap_status_reg();
+				_dpd_usleep(1000);
+				time_out --;
+			}
+			if (time_out == 0) {
+				IIO_WARNING("Trigger 3-capture timeout! Stop tracking!\n");
+				break;
+			}
+ 
+			orx_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+			dpdErr = dpd_read_capture_buffer(2, orx_cap_buf, DPD_CAP_SIZE); // ORx
+			/* capture the TU and TX data */
+			tu_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+			tx_cap_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+			dpdErr = dpd_read_capture_buffer(0, tu_cap_buf, DPD_CAP_SIZE);
+			dpdErr = dpd_read_capture_buffer(1, tx_cap_buf, DPD_CAP_SIZE);
+#endif
 		}
  
 		/* 4.coeffs estimate */
@@ -1697,7 +1763,6 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		{
 			uint16_t data_i, data_q;
 			int16_t tmp_i, tmp_q;
- 
 			if((dpdData.pTrackCfg->direct == 1) && (dpdData.iterCount > DPD_MAX_INDIRECT_COUNT - 1))
 			{
 				dpdData.direct = 1;
@@ -1706,13 +1771,31 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			{
 				dpdData.direct = 0;
 			}
- 
 			pTx = malloc(DPD_CAP_SIZE * sizeof(double complex));
 			pORx = malloc(DPD_CAP_SIZE * sizeof(double complex));
  
+			#if IIO_DPD_CAP_DEBUG
+			char *file_name[64] = {0,};
+			snprintf(file_name,64,"%s_%d.txt", "tx_iq", iters);
+			FILE *fp_tx = fopen(file_name, "w");
+			if (!fp_tx) {
+				IIO_ERROR("Open file <%s> failed!\n", file_name);
+				return -1;
+			}
+			
+			char *file_name_orx[64] = {0,};
+			snprintf(file_name_orx, 64, "%s_%d.txt", "orx_iq", iters);
+			FILE *fp_orx = fopen(file_name_orx, "w");
+			if (!fp_orx) {
+				IIO_ERROR("Open file <%s> failed!\n", file_name_orx);
+				return -1;
+			}
+			#endif
 			/* convert int32_t to double complex for Tx */
-			for(uint16_t index = 0; index < DPD_CAP_SIZE; index=index+2)
+			uint16_t index = 0;
+			for(index = 0; index < DPD_CAP_SIZE; index=index+2)
 			{
+				/* convert Tu/Tx data */
 				if(dpdData.direct)
 				{
 					data_i = (tu_cap_buf[index] >> 0) & 0xffff;
@@ -1720,6 +1803,9 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
  
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_tx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
  
 					pTx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
  
@@ -1727,6 +1813,9 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 					data_q = (tu_cap_buf[index+1]>> 16) & 0xffff;
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_tx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
  
 					pTx[index+1] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 				}
@@ -1737,6 +1826,9 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
  
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_tx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
  
 					pTx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
  
@@ -1744,33 +1836,78 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 					data_q = (tx_cap_buf[index+1]>> 16) & 0xffff;
 					tmp_i = (int16_t)(data_i);
 					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_tx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
  
 					pTx[index+1] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 				}
+#if ORX_FROM_FPGA_RAM
+				/* convert ORx data */
+				{
+					data_i = (orx_cap_buf[index] >> 0) & 0xffff;
+					data_q = (orx_cap_buf[index+1]>> 0) & 0xffff;
+
+					tmp_i = (int16_t)(data_i);
+					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_orx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
+
+					pORx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
+
+					data_i = (orx_cap_buf[index] >> 16) & 0xffff;
+					data_q = (orx_cap_buf[index+1]>> 16) & 0xffff;
+					tmp_i = (int16_t)(data_i);
+					tmp_q = (int16_t)(data_q);
+					#if IIO_DPD_CAP_DEBUG
+					fprintf(fp_orx, "%d\t%d\n", tmp_i, tmp_q);
+					#endif
+
+					pORx[index+1] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
+				}
+#endif
 			}
  
+			#if IIO_DPD_CAP_DEBUG
+			IIO_INFO("Successfully saved %d IQ pairs to file<%s>.\n", index, file_name);
+			fclose(fp_tx);
+			#if ORX_FROM_FPGA_RAM
+			IIO_INFO("Successfully saved %d IQ pairs to file<%s>.\n", index, file_name_orx);
+			fclose(fp_orx);
+			/* debug_test_end */
+			#endif
+			#endif
 			free(tu_cap_buf);
 			free(tx_cap_buf);
  
+#if ORX_FROM_FPGA_RAM
+			free(orx_cap_buf);
+#endif
+
+#if !ORX_FROM_FPGA_RAM
 			/* convert int32_t to double complex for ORx */
-			for(uint16_t index = 0; index < DPD_CAP_SIZE; index++)
+			for(index = 0; index < DPD_CAP_SIZE; index++)
 			{
 				// ORx
 				uint8_t *obs_buf = (uint8_t *)iio_buffer_start(buffer);
 				data_i = (obs_buf[index*4 + 0] << 0) | (obs_buf[index*4 + 1] << 8);
 				data_q = (obs_buf[index*4 + 2] << 0) | (obs_buf[index*4 + 3] << 8);
- #if 0
-				tmp_i = (data_i > 32768-1) ? (data_i-65536) : data_i;
-				tmp_q = (data_q > 32768-1) ? (data_q-65536) : data_q;
- #else
+
 				tmp_i = (int16_t)(data_i);
 				tmp_q = (int16_t)(data_q);
- #endif
+				#if IIO_DPD_CAP_DEBUG
+				fprintf(fp_orx, "%d\t%d\n", tmp_i, tmp_q);
+				#endif
 				pORx[index] = tmp_i*1.0/32768 + I*(tmp_q*1.0/32768);
 			}
+			#if IIO_DPD_CAP_DEBUG
+			IIO_INFO("Successfully saved %d IQ pairs to file<%s>.\n", index, file_name);
+			fclose(fp_orx);
+			#endif
 			/* release obs buffer */
 			iio_buffer_destroy(buffer);
- 
+ #endif
 			/* run dpd coeffs estimation */
 			uint8_t capBatch = 1;
 			dpdErr = dpd_CoeffEstimate(&dpdData,
@@ -1800,10 +1937,10 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 				break;
 			}
 		}
- #if 1
+
 		/* 6.bypass actuator */
 		dpd_register_write(ADDR_ACT_OUT_SEL, DPD_HW_BYPASS);
- #endif
+
 		/* 7.luts programming */
 		if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 		{
@@ -1827,7 +1964,6 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		}
 		_dpd_usleep(100*1000);
 	}
-	#endif
 
 	/* Disable all channels of obs */
 	for (i = 0; i < nb_channels; i++) {
@@ -1836,9 +1972,15 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 			iio_channel_disable(ch);
 		}
 	}
+
+	if (chn1)
+		iio_channel_attr_write(chn1, "powerdown", "1");
+	if (chn2)
+		iio_channel_attr_write(chn2, "powerdown", "1");
+
 	return dpdErr;
 }
- 
+
 static void _dpd_tracking_thread(void* arg)
 {
 	int ret = 0;

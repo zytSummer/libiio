@@ -1,5 +1,7 @@
 #include "dpd_matrixSolver.h"
 #include <string.h>
+#include <fcntl.h>
+#include <stdio.h>
 
 #if 1
 static dpd_AdpFeatureRow_t feature[DPD_MAX_NUM_FEATURES];
@@ -176,7 +178,19 @@ void dpd_updateFeatureCoeffs(dpd_TrackData_t *pData, double complex *a)
     dpd_AdpFeatureRow_t *feature   = pData->pDpdModelDesc->feature;
 #endif
     double complex      *bias = pData->biasOfCoeffs;
+#if 0
+    static uint8_t iters  = 0;
 
+    /* debug_test */
+    char *file_name[64] = {0,};
+    snprintf(file_name,64,"%s_%d.txt", "dpd_feature", iters ++);
+    FILE *fp = fopen(file_name, "w");
+    if (!fp) {
+        printf("Error! Open file <%s> failed!\n", file_name);
+        return -1;
+    }
+    /* debug_test_end */
+#endif
     /* copy to feature structure */
     for (uint8_t i = 0u; i < features; i++)
     {
@@ -193,9 +207,14 @@ void dpd_updateFeatureCoeffs(dpd_TrackData_t *pData, double complex *a)
         {
             feature[i].a = a[i];
         }
-
+#if 0
+        fprintf(fp, "%lf\t%lf\n", creal(feature[i].a), cimag(feature[i].a));
+#endif
         pData->pDpdModelDesc->feature[i].a = feature[i].a;
     }
-
+#if 0
+    if (fp)
+        fclose(fp);
+#endif
     return;
 }

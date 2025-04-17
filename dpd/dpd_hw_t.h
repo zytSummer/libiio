@@ -4,9 +4,15 @@
 #include <stdint.h>
 #include <string.h>
 
+#define ORX_FROM_FPGA_RAM               1
+
 #define XPAR_AXI_DPD_ACTUATOR_0_BASEADDR 0x46000000
 #define XPAR_AXI_DPD_CAPTURE_0_BASEADDR  0x46100000
-#define XPAR_AXI_DPD_CAPTURE_1_BASEADDR  0x46200000
+#define XPAR_AXI_DPD_CAPTURE_1_BASEADDR  0x46180000
+#if ORX_FROM_FPGA_RAM
+#define XPAR_AXI_DPD_CAPTURE_2_BASEADDR  0x46200000
+#define XPAR_AXI_DPD_CAPTURE_SYNC_CTRL_0_BASEADDR 0x46280000
+#endif
 #define XPAR_AXI_DPD_TX_BUFF_0_BASEADDR  0x46300000
 #define XPAR_AXI_DPD_TX_BUFF_1_BASEADDR  0x46400000
 
@@ -15,8 +21,13 @@
 #define DPD_MEM_BASEADDR        (XPAR_AXI_DPD_ACTUATOR_0_BASEADDR + 0x8000)
 #define DPD_CAP0_BASEADDR       XPAR_AXI_DPD_CAPTURE_0_BASEADDR
 #define DPD_CAP1_BASEADDR       XPAR_AXI_DPD_CAPTURE_1_BASEADDR
+#if ORX_FROM_FPGA_RAM
+#define DPD_CAP2_BASEADDR       XPAR_AXI_DPD_CAPTURE_2_BASEADDR
+#endif
+#define DPD_CAP_CTRL_0_BASEADDR XPAR_AXI_DPD_CAPTURE_SYNC_CTRL_0_BASEADDR
 #define DPD_TX_BUFF0_BASEADDR   XPAR_AXI_DPD_TX_BUFF_0_BASEADDR
 #define DPD_TX_BUFF1_BASEADDR   XPAR_AXI_DPD_TX_BUFF_1_BASEADDR
+#define DPD_DAC_DDS_BASE        0x44A04000
 #define DPD_LUT_DEPTH           1024
 #define DPD_LUT_MAX             64
 #define DPD_CAP_SIZE            4096
@@ -24,8 +35,13 @@
 #define DPD_MEM_SIZE            0x8000
 #define DPD_CAP0_SIZE           0x10000
 #define DPD_CAP1_SIZE           0x10000
+#if ORX_FROM_FPGA_RAM
+#define DPD_CAP2_SIZE           0x10000
+#endif
+#define DPD_CAP_CTRL_0_SIZE     0x10000
 #define DPD_TX_BUFF0_SIZE       0x10000
 #define DPD_TX_BUFF1_SIZE       0x10000
+#define DPD_DAC_DDS_SIZE        0x1000
 
 // DPD physic address device
 #define DPD_HW_PHY_DEV          ("/dev/mem")
@@ -64,6 +80,7 @@ typedef struct tag_dpd_hw_t {
     dpd_mem_space_t dpd_mem;
     dpd_mem_space_t dpd_cap0;
     dpd_mem_space_t dpd_cap1;
+    dpd_mem_space_t dpd_cap2;
 } dpd_hw_t;
 
 #endif

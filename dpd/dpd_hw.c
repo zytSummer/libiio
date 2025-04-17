@@ -32802,7 +32802,7 @@ static int32_t hw_mem_write(uint32_t base, uint32_t offset, uint32_t data)
 
     if (s_g_dpd_hw.init_flag != DPD_HW_ININED)
     {
-        printf("Warning!! dpd module has been initialed!\n");
+        printf("Warning!! dpd module has not been initialed!\n");
         return DPD_HW_MEM_DEVICE_UNINTED_ERROR;
     }
     
@@ -32822,6 +32822,16 @@ static int32_t hw_mem_write(uint32_t base, uint32_t offset, uint32_t data)
     {
         phy_size = DPD_CAP1_SIZE;
     }
+#if ORX_FROM_FPGA_RAM 
+    else if (base == DPD_CAP2_BASEADDR && offset < DPD_CAP2_SIZE)
+    {
+        phy_size = DPD_CAP2_SIZE;
+    }
+    else if (base == DPD_CAP_CTRL_0_BASEADDR && offset < DPD_CAP_CTRL_0_SIZE)
+    {
+        phy_size = DPD_CAP_CTRL_0_SIZE;
+    }
+#endif
     else if (base == DPD_TX_BUFF0_BASEADDR && offset < DPD_TX_BUFF0_SIZE)
     {
         phy_size = DPD_TX_BUFF0_SIZE;
@@ -32883,6 +32893,16 @@ static int32_t hw_mem_read(uint32_t base, uint32_t offset, uint32_t *data)
     {
         phy_size = DPD_CAP1_SIZE;
     }
+#if ORX_FROM_FPGA_RAM 
+    else if (base == DPD_CAP2_BASEADDR && offset < DPD_CAP2_SIZE)
+    {
+        phy_size = DPD_CAP2_SIZE;
+    }
+    else if (base == DPD_CAP_CTRL_0_BASEADDR && offset < DPD_CAP_CTRL_0_SIZE)
+    {
+        phy_size = DPD_CAP_CTRL_0_SIZE;
+    }
+#endif
     else if (base == DPD_TX_BUFF0_BASEADDR && offset < DPD_TX_BUFF0_SIZE)
     {
         phy_size = DPD_TX_BUFF0_SIZE;
@@ -32901,7 +32921,7 @@ static int32_t hw_mem_read(uint32_t base, uint32_t offset, uint32_t *data)
     }
 
     vir_base = mmap(NULL, phy_size, PROT_READ | PROT_WRITE, MAP_SHARED, \
-                                    s_g_dpd_hw.mem_fd, base & base & ~(phy_size-1));
+                                    s_g_dpd_hw.mem_fd, base & ~(phy_size-1));
     if (vir_base == (void *) -1)
     {
         printf("ERROR!! memory map failed at physical address 0x%x\n", phy_size);
@@ -32942,6 +32962,18 @@ int32_t dpd_hw_mem_write(uint32_t addr, uint32_t data)
         base = DPD_CAP1_BASEADDR;
         offset = addr - DPD_CAP1_BASEADDR;
     }
+#if ORX_FROM_FPGA_RAM 
+    else if (addr >= DPD_CAP2_BASEADDR && addr < DPD_CAP2_BASEADDR + DPD_CAP2_SIZE)
+    {
+        base = DPD_CAP2_BASEADDR;
+        offset = addr - DPD_CAP2_BASEADDR;
+    }
+    else if (addr >= DPD_CAP_CTRL_0_BASEADDR && addr < DPD_CAP_CTRL_0_BASEADDR + DPD_CAP_CTRL_0_SIZE)
+    {
+        base = DPD_CAP_CTRL_0_BASEADDR;
+        offset = addr - DPD_CAP_CTRL_0_BASEADDR;
+    }
+#endif
 	else if (addr >= DPD_TX_BUFF0_BASEADDR && addr < DPD_TX_BUFF0_BASEADDR + DPD_TX_BUFF0_SIZE)
     {
         base = DPD_TX_BUFF0_BASEADDR;
@@ -32993,6 +33025,18 @@ int32_t dpd_hw_mem_read(uint32_t addr, uint32_t *data)
         base = DPD_CAP1_BASEADDR;
         offset = addr - DPD_CAP1_BASEADDR;
     }
+#if ORX_FROM_FPGA_RAM  
+    else if (addr >= DPD_CAP2_BASEADDR && addr < DPD_CAP2_BASEADDR + DPD_CAP2_SIZE)
+    {
+        base = DPD_CAP2_BASEADDR;
+        offset = addr - DPD_CAP2_BASEADDR;
+    }
+    else if (addr >= DPD_CAP_CTRL_0_BASEADDR && addr < DPD_CAP_CTRL_0_BASEADDR + DPD_CAP_CTRL_0_SIZE)
+    {
+        base = DPD_CAP_CTRL_0_BASEADDR;
+        offset = addr - DPD_CAP_CTRL_0_BASEADDR;
+    }
+#endif
     else if (addr >= DPD_TX_BUFF0_BASEADDR && addr < DPD_TX_BUFF0_BASEADDR + DPD_TX_BUFF0_SIZE)
     {
         base = DPD_TX_BUFF0_BASEADDR;
@@ -33103,7 +33147,7 @@ uint8_t dpd_luts_access_test(void)
 uint8_t dpd_luts_write(uint8_t lutId, uint32_t *pLut)
 {
     uint8_t errCode = 0u;
-    uint64_t idMask = (1lu << lutId);
+    uint64_t idMask = (1llu << lutId);
 
     // write lutid
     dpd_write_lutid(idMask);
@@ -33224,7 +33268,13 @@ uint32_t dpd_register_read(uint8_t offset)
 uint8_t dpd_read_capture_buffer(uint8_t position, uint32_t *pBuf, uint32_t size)
 {
 	uint8_t err = 0u;
+#if(ORX_FROM_FPGA_RAM==1)
+	uint32_t base = (position == 0u) ? s_g_dpd_hw.dpd_cap0.phy_base :
+					(position == 1u) ? s_g_dpd_hw.dpd_cap1.phy_base :
+					s_g_dpd_hw.dpd_cap2.phy_base;
+#else
 	uint32_t base = (position == 0u) ? s_g_dpd_hw.dpd_cap0.phy_base : s_g_dpd_hw.dpd_cap1.phy_base;
+#endif
 	uint32_t offset = 0u;
 
 	if((pBuf == NULL) || (size > DPD_CAP_SIZE))
@@ -33245,22 +33295,33 @@ uint8_t dpd_read_capture_buffer(uint8_t position, uint32_t *pBuf, uint32_t size)
 	return err;
 }
 
-uint8_t dpd_write_cap_control_reg(int8_t position, uint32_t ctrl)
+uint8_t dpd_write_cap_control_reg(uint32_t ctrl)
 {
 	uint8_t err = 0u;
-	uint32_t base = (position == 0u) ? s_g_dpd_hw.dpd_cap0.phy_base : s_g_dpd_hw.dpd_cap1.phy_base;
-	uint32_t offset = 0x8000u;
+	uint32_t base = DPD_CAP_CTRL_0_BASEADDR;
+	uint32_t offset = 0x00u;
 
 	// write capture control register
 	hw_mem_write(base, offset, ctrl);
 	return err;
 }
 
-uint32_t dpd_read_cap_control_reg(int8_t position)
+uint32_t dpd_read_cap_control_reg(void)
 {
 	uint32_t ret = 0u;
-	uint32_t base = (position == 0u) ? s_g_dpd_hw.dpd_cap0.phy_base : s_g_dpd_hw.dpd_cap1.phy_base;
-	uint32_t offset = 0x8000u;
+	uint32_t base = DPD_CAP_CTRL_0_BASEADDR;
+	uint32_t offset = 0x00u;
+
+	// write capture control register
+	hw_mem_read(base, offset, &ret);
+	return ret;
+}
+
+uint32_t dpd_read_cap_status_reg(void)
+{
+	uint32_t ret = 0u;
+	uint32_t base = DPD_CAP_CTRL_0_BASEADDR;
+	uint32_t offset = 0x04u;
 
 	// write capture control register
 	hw_mem_read(base, offset, &ret);
@@ -33298,7 +33359,10 @@ uint32_t dpd_hw_open(void)
 
     s_g_dpd_hw.dpd_cap1.phy_size = DPD_CAP1_SIZE;
     s_g_dpd_hw.dpd_cap1.phy_base = DPD_CAP1_BASEADDR;
-
+#if ORX_FROM_FPGA_RAM
+    s_g_dpd_hw.dpd_cap2.phy_size = DPD_CAP2_SIZE;
+    s_g_dpd_hw.dpd_cap2.phy_base = DPD_CAP2_BASEADDR;
+#endif
     s_g_dpd_hw.init_flag = DPD_HW_ININED;
 
 inited:
