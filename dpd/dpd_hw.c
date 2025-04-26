@@ -33397,3 +33397,16 @@ uint32_t dpd_hw_close(void)
 closed:
     return ret;
 }
+
+uint8_t dpd_write_lut_sel(uint8_t sel)
+{
+	dpd_register_write(ADDR_LUT_SEL, sel);
+	return 0;
+}
+
+uint8_t dpd_read_lut_sel(void)
+{
+	uint32_t retVal = 0;
+	retVal = dpd_register_read(ADDR_LUT_SEL);
+	return (retVal & 0x03u);
+}

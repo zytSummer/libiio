@@ -16,6 +16,7 @@
 #include "dpd_utils.h"
 #include "dpd_t.h"
 #include "dpd_act_p.h"
+#include "dpd_hw.h"
 
 #include <errno.h>
 #include <string.h>
@@ -148,6 +149,12 @@ static ssize_t _dpd_dev_attr_initcfg_show(char *dst);
 static ssize_t _dpd_dev_attr_initcfg_store(const char *src);
 static ssize_t _dpd_dev_attr_lutload_show(char *dst);
 static ssize_t _dpd_dev_attr_lutload_store(const char *src);
+static ssize_t _dpd_dev_attr_txcap_show(char *dst);
+static ssize_t _dpd_dev_attr_txcap_store(const char *src);
+static ssize_t _dpd_dev_attr_tucap_show(char *dst);
+static ssize_t _dpd_dev_attr_tucap_store(const char *src);
+static ssize_t _dpd_dev_attr_orxcap_show(char *dst);
+static ssize_t _dpd_dev_attr_orxcap_store(const char *src);
 
 static int _dpd_load_waveform(const char *wave_file, uint8_t *data);
 
@@ -366,6 +373,10 @@ IIO_DPD_ADD_DEV_UNIQUE_ATTR(enable, _dpd_dev_attr_en_show, _dpd_dev_attr_en_stor
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(waveform, _dpd_dev_attr_waveform_show, _dpd_dev_attr_waveform_store, 26);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(initcfg, _dpd_dev_attr_initcfg_show, _dpd_dev_attr_initcfg_store, 27);
 IIO_DPD_ADD_DEV_UNIQUE_ATTR(lutload, _dpd_dev_attr_lutload_show, _dpd_dev_attr_lutload_store, 28);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(txcap, _dpd_dev_attr_txcap_show, _dpd_dev_attr_txcap_store, 29);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(tucap, _dpd_dev_attr_tucap_show, _dpd_dev_attr_tucap_store, 30);
+IIO_DPD_ADD_DEV_UNIQUE_ATTR(orxcap, _dpd_dev_attr_orxcap_show, _dpd_dev_attr_orxcap_store, 31);
+//IIO_DPD_ADD_DEV_UNIQUE_ATTR(synccap, _dpd_dev_attr_synccap_show, _dpd_dev_attr_synccap_store, 32);
 
 ADD_DEV_ATTR_ARRAY_ELEMENT_START()
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_CHAN, Tu_i,0),
@@ -397,6 +408,10 @@ ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, enable, 25),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, waveform, 26),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, initcfg, 27),
 ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, lutload, 28),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, txcap, 29),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, tucap, 30),
+ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, orxcap, 31),
+//ADD_DEV_ATTR_ARRAY_ELEMENT(TYPE_IS_ATTR, synccap, 32),
 ADD_DEV_ATTR_ARRAY_ELEMENT_END();
 
 
@@ -999,6 +1014,198 @@ static ssize_t _dpd_dev_attr_lutload_store(const char *src)
 
 	dpd_write_act_out_sel(DPD_HW_ENABLE);
 	
+	return ret;
+}
+
+static int _dpd_dev_data_cap(uint8_t cap_pos, char *data_buf)
+{
+	uint32_t cap_status = 0u;
+	int32_t time_out = 1000;
+	uint32_t err = 0;
+
+	if (!data_buf)
+	{ 
+		IIO_ERROR("NULL input parameter!\n");
+		return -1;
+	}
+
+	dpd_write_cap_control_reg(0x03u); // trigger 3-captures
+	while((cap_status != 0x07) && (time_out >= 0))
+	{
+		cap_status = dpd_read_cap_status_reg();
+		_dpd_usleep(1000);
+		time_out --;
+	}
+	if (time_out == 0) {
+		IIO_ERROR("Trigger 3-capture timeout! Stop tracking!\n");
+		return -1;
+	}
+	switch(cap_pos)
+	{
+		case 0:
+			err = dpd_read_capture_buffer(0, data_buf, DPD_CAP_SIZE);	//TU
+			break;
+		case 1:
+			err = dpd_read_capture_buffer(1, data_buf, DPD_CAP_SIZE);	//TX
+			break;
+		case 2:
+			err = dpd_read_capture_buffer(2, data_buf, DPD_CAP_SIZE); // ORx
+			break;
+		default:
+			IIO_ERROR("Unsupported input capture position\n");
+			return -1;
+	}
+
+	return err;
+}
+
+static ssize_t _dpd_dev_attr_datacap_show(uint8_t cap_pos, char *dst)
+{
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	char *cap_pos_name[3] = {"tucap", "txcap", "orxcap"};
+	FILE *f;
+	ssize_t ret = 0;
+	
+	if (cap_pos >= 3)
+	{
+		IIO_ERROR("Unsupported input capture position\n");
+		return -1;
+	}
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, cap_pos_name[cap_pos]);
+	
+	f = fopen(file_path, "re");
+	if (!f)
+		return -EIO;
+ 
+	ret = fread(dst, 1, IIO_DPD_ATTR_LEN, f);
+ 
+	if (ret > 0) 
+	{
+		dst[ret] = '\0';
+	}
+	else
+		dst[0] = '\0';
+	
+	fclose(f);
+	return ret ? ret : -EIO;
+}
+
+
+static ssize_t _dpd_dev_attr_datacap_store(uint8_t cap_pos, const char *src)
+{
+	ssize_t ret = 0;
+	int ret_tmp = 0;
+	char *cap_pos_name[3] = {"tucap", "txcap", "orxcap"};
+	FILE *f;
+	char file_path[IIO_DPD_ATTR_NAME_LEN] = {0,};
+	char *str_tmp = NULL;
+	char *rest = NULL;
+	char *data_buf = NULL;
+	FILE *fp = NULL;
+	uint32_t index;
+	uint16_t data_i, data_q;
+	int16_t tmp_i, tmp_q;
+ 
+	if (cap_pos >= 3)
+	{
+		IIO_ERROR("Unsupported input capture position\n");
+		return -1;
+	}
+
+	iio_snprintf(file_path, sizeof(file_path), "%s/%s/%s", DPD_TMPFS_PATH, DPD_DEVICE_PATH, cap_pos_name[cap_pos]);
+	
+	f = fopen(file_path, "we");
+	if (!f)
+		return -EIO;
+ 
+	/* User may enter additional '\n' symbols, which may cause the file open failed */
+	str_tmp = iio_strtok_r(src, "\n", &rest); 
+ 
+	ret = fwrite(str_tmp, 1, strlen(str_tmp)+1, f);
+	fclose(f);
+	
+	data_buf = malloc(DPD_CAP_SIZE*sizeof(uint32_t));
+	
+	ret = _dpd_dev_data_cap(cap_pos, data_buf);
+
+	fp = fopen(str_tmp, "w");
+	if (!fp) {
+		IIO_ERROR("Open file <%s> failed!\n", str_tmp);
+		free(data_buf);
+		return -1;
+	}
+ 
+	for(index = 0; index < DPD_CAP_SIZE; index=index+2)
+	{
+		data_i = (data_buf[index] >> 0) & 0xffff;
+		data_q = (data_buf[index+1]>> 0) & 0xffff;
+
+		tmp_i = (int16_t)(data_i);
+		tmp_q = (int16_t)(data_q);
+		
+		fprintf(fp, "%d\t%d\n", tmp_i, tmp_q);
+
+		data_i = (data_buf[index] >> 16) & 0xffff;
+		data_q = (data_buf[index+1]>> 16) & 0xffff;
+		tmp_i = (int16_t)(data_i);
+		tmp_q = (int16_t)(data_q);
+		
+		fprintf(fp, "%d\t%d\n", tmp_i, tmp_q);
+
+	}
+
+	free(data_buf);
+	fclose(fp);
+	
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_txcap_show(char *dst)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_show(1, dst);
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_txcap_store(const char *src)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_store(1, src);
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_tucap_show(char *dst)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_show(0, dst);
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_tucap_store(const char *src)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_store(0, src);
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_orxcap_show(char *dst)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_show(2, dst);
+	return ret;
+}
+
+static ssize_t _dpd_dev_attr_orxcap_store(const char *src)
+{
+	ssize_t ret = 0;
+ 
+	ret = _dpd_dev_attr_datacap_store(2, src);
 	return ret;
 }
 
@@ -1944,13 +2151,26 @@ int _dpd_tracking_entry(struct iio_device *dev, uint32_t iter_cnt)
 		/* 7.luts programming */
 		if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 		{
+			// a.find which bank of luts is available
+			uint8_t oldSel = dpd_read_lut_sel();
+
+			// b.select the available bank to program
+			uint8_t newSel = (oldSel & 0x01) ? (oldSel & 0xFC) : (oldSel | 0x02);
+			dpd_write_lut_sel(newSel);
+
+			// c. program luts
 			for(uint8_t lutId = 0u; lutId < DPD_LUT_MAX; lutId++)
 			{
-				dpd_luts_write(lutId, lut_entries+ lutId*DPD_LUT_DEPTH);
-				_dpd_usleep(1000);
+				if(dpdData.pLut->lutIdFound & (1ull << lutId))
+				{
+					dpd_luts_write(lutId, lut_entries + lutId*DPD_LUT_DEPTH);
+				}
 			}
+			// d. switch the program bank and active bank
+			newSel = (newSel & 0x01) ? 0x02 : 0x01;
+			dpd_write_lut_sel(newSel);
 		}
- 
+
 		/* 8.enable actuator */
 		if(DPD_ERR_CODE_NO_ERROR == dpdErr)
 		{

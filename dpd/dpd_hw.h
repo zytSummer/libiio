@@ -37,4 +37,7 @@ uint32_t dpd_hw_close(void);
 uint32_t *dpd_hw_get_luts_entry(void);
 uint8_t dpd_download_waveform_default(void);
 
+uint8_t dpd_write_lut_sel(uint8_t sel);
+uint8_t dpd_read_lut_sel(void);
+
 #endif

@@ -54,6 +54,7 @@
 #define ADDR_ACT_OUT_SEL        0x0010
 #define ADDR_LUTID_L            0x0014
 #define ADDR_LUTID_H            0x0018
+#define ADDR_LUT_SEL            0x001C
 
 // DPD ACT Out Select
 typedef enum {
